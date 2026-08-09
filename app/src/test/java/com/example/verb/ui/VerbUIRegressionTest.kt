@@ -36,7 +36,7 @@ class VerbUIRegressionTest {
         }
 
         composeTestRule.onNodeWithTag("verb_prompt_input").performTextReplacement("do a barrel roll")
-        composeTestRule.onNodeWithTag("verb_run_command_button").performClick()
+        composeTestRule.onNodeWithTag("verb_submit_intent_button").performClick()
 
         assertNotNull(submittedIntent)
         assertEquals("unsupported.intent", submittedIntent!!.id)
@@ -55,7 +55,7 @@ class VerbUIRegressionTest {
         }
 
         composeTestRule.onNodeWithTag("verb_prompt_input").performTextReplacement("stop process 1234")
-        composeTestRule.onNodeWithTag("verb_run_command_button").performClick()
+        composeTestRule.onNodeWithTag("verb_submit_intent_button").performClick()
 
         assertNotNull(submittedIntent)
         assertEquals("process.stop", submittedIntent!!.id)
@@ -94,7 +94,7 @@ class VerbUIRegressionTest {
                     summary = "Details for process",
                     isSuccess = true,
                     derivedData = mapOf("PID" to "1234", "CPU" to "5%"),
-                    observedOutput = "top -n 1 output string showing process 1234",
+                    observedOutput = "ProcessState(pid=1234, state=RUNNING, cpuUsage=5.0%)",
                     explanation = "This process is using 5% CPU."
                 ),
                 onOpenTerminal = {},
@@ -113,9 +113,13 @@ class VerbUIRegressionTest {
         composeTestRule.onNodeWithText("Show Evidence").performClick()
 
         composeTestRule.onNodeWithText("Observed").assertIsDisplayed()
-        composeTestRule.onNodeWithText("top -n 1 output string showing process 1234").assertIsDisplayed()
+        composeTestRule.onNodeWithText("ProcessState(pid=1234, state=RUNNING, cpuUsage=5.0%)").assertIsDisplayed()
 
         composeTestRule.onNodeWithText("Explanation").assertIsDisplayed()
         composeTestRule.onNodeWithText("This process is using 5% CPU.").assertIsDisplayed()
+
+        // Assert shell-prompt framing (e.g. "$ ") is absent from rendered UI
+        composeTestRule.onNodeWithText("$ ", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("# ", substring = true).assertDoesNotExist()
     }
 }
