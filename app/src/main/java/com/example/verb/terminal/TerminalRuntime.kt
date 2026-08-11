@@ -19,6 +19,9 @@ class TerminalRuntime(
         TermuxTerminalRuntimeAdapter(workingDir)
     }
 
+    val delegateAdapter: TerminalRuntimeAdapter get() = delegate
+    val unwrapTermuxAdapter: TermuxTerminalRuntimeAdapter? get() = delegate as? TermuxTerminalRuntimeAdapter
+
     override val sessionState: StateFlow<TerminalSessionState> get() = delegate.sessionState
     override val terminalOutput: StateFlow<String> get() = delegate.terminalOutput
     override val activeSelectionText: StateFlow<String> get() = delegate.activeSelectionText
@@ -43,5 +46,6 @@ class TerminalRuntime(
 
     override fun currentWorkingDirectory(): String = delegate.currentWorkingDirectory()
     override fun clearBuffer() = delegate.clearBuffer()
+    override fun restartSession() = delegate.restartSession()
     override fun destroy() = delegate.destroy()
 }

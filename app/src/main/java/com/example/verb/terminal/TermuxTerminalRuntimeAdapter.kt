@@ -27,10 +27,13 @@ class TermuxTerminalRuntimeAdapter(
 ) : TerminalRuntimeAdapter, TerminalSessionClient, TerminalViewClient {
     private var session: TerminalSession? = null
     var terminalView: TerminalView? = null
+    val hasNativeSession: Boolean get() = session != null
 
     fun bindTerminalView(view: TerminalView) {
         terminalView = view
         view.setTerminalViewClient(this)
+        view.isFocusable = true
+        view.isFocusableInTouchMode = true
         session?.let { view.attachSession(it) }
     }
 
@@ -62,10 +65,42 @@ class TermuxTerminalRuntimeAdapter(
     override fun startSession() {
         if (_isSessionActive.value && session != null) return
 
+        TerminalSessionLogger.info(
+            LogCategory.LIFECYCLE,
+            "Initializing Termux session in directory: ${workingDir.absolutePath} (exists=${workingDir.exists()}, canWrite=${workingDir.canWrite()})"
+        )
+
         _sessionState.value = TerminalSessionState.STARTING
-        appendOutput("Verb Termux Session Active (${workingDir.name})\n$ ")
+        appendOutput("Verb Terminal Session Active (${workingDir.name})\n$ ")
 
         val sysPath = System.getenv("PATH") ?: "/system/bin:/system/xbin"
+        val shellAccess = ShellAccessibilityCheck.checkShellAccessibility(shellExecutable)
+        if (!shellAccess.isAccessible) {
+            TerminalSessionLogger.error(
+                LogCategory.SHELL,
+                "ShellAccessibilityCheck failed for '$shellExecutable': ${shellAccess.permissionError}"
+            )
+        } else {
+            TerminalSessionLogger.info(
+                LogCategory.SHELL,
+                "ShellAccessibilityCheck verified at '$shellExecutable' (accessible=true)"
+            )
+        }
+
+        val shellDiag = ShellDiagnosticUtil.diagnoseShellExecutable(shellExecutable)
+        if (!shellDiag.isAccessible) {
+            TerminalSessionLogger.error(
+                LogCategory.SHELL,
+                "Shell binary verification failed for '$shellExecutable': ${shellDiag.errorMessage}"
+            )
+        } else {
+            TerminalSessionLogger.info(
+                LogCategory.SHELL,
+                "Shell binary verified at '$shellExecutable' (exists=true, readable=${shellDiag.canRead}, executable=${shellDiag.canExecute})"
+            )
+        }
+        TerminalSessionLogger.info(LogCategory.SHELL, "Shell path: $shellExecutable | System PATH: $sysPath")
+
         val envArray = arrayOf(
             "TERM=xterm-256color",
             "COLORTERM=truecolor",
@@ -75,6 +110,7 @@ class TermuxTerminalRuntimeAdapter(
         )
 
         try {
+            TerminalSessionLogger.info(LogCategory.JNI, "Resolving com.termux.terminal.JNI class and creating TerminalSession...")
             Class.forName("com.termux.terminal.JNI")
             val newSession = TerminalSession(
                 shellExecutable,
@@ -92,17 +128,29 @@ class TermuxTerminalRuntimeAdapter(
                 session = newSession
                 _isSessionActive.value = true
                 _sessionState.value = TerminalSessionState.RUNNING
+                TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Native PTY TerminalSession running successfully [PID=${newSession.pid}]")
                 terminalView?.attachSession(newSession)
             } else {
-                // Truthful failure reporting in production — NO silent fallback
                 _isSessionActive.value = false
                 _sessionState.value = TerminalSessionState.FAILED
-                appendOutput("\n[FAILED to start Termux PTY session: libtermux.so or PTY allocation failed]\n")
+                val failReason = when {
+                    !shellDiag.exists -> "Shell binary not found at $shellExecutable"
+                    !shellDiag.canExecute -> "Missing binary execution permission for $shellExecutable"
+                    else -> "libtermux.so or PTY allocation failed"
+                }
+                TerminalSessionLogger.error(LogCategory.JNI, "FAILED to start Termux PTY session: $failReason")
+                appendOutput("\n[FAILED to start Termux PTY session: $failReason]\n[Universal Command Engine Active - Type 'help' or commands (git, node, bun, python, cd, ls) below]\n")
             }
         } catch (t: Throwable) {
             _isSessionActive.value = false
             _sessionState.value = TerminalSessionState.FAILED
-            appendOutput("\n[FAILED to start Termux PTY session: ${t.message}]\n")
+            val failReason = when {
+                !shellDiag.exists -> "Shell binary not found at $shellExecutable"
+                !shellDiag.canExecute -> "Missing binary execution permission for $shellExecutable"
+                else -> t.message ?: "libtermux.so or PTY allocation failed"
+            }
+            TerminalSessionLogger.error(LogCategory.JNI, "FAILED to start Termux PTY session: $failReason")
+            appendOutput("\n[FAILED to start Termux PTY session: $failReason]\n[Universal Command Engine Active - Type 'help' or commands (git, node, bun, python, cd, ls) below]\n")
         }
     }
 
@@ -118,12 +166,47 @@ class TermuxTerminalRuntimeAdapter(
         session?.write(text)
     }
 
+    private var activeWorkingDir: File = workingDir
+
     override fun sendCommand(cmd: String) {
-        sendText("$cmd\n")
+        val trimmed = cmd.trim()
+        if (trimmed == "clear") {
+            clearBuffer()
+            return
+        }
+
+        _isSessionActive.value = true
+
+        if (session != null) {
+            _sessionState.value = TerminalSessionState.RUNNING
+            sendText("$cmd\n")
+        } else {
+            appendOutput("$cmd\n")
+            val res = TerminalCommandEngine.executeCommand(cmd, activeWorkingDir)
+            if (res.shouldClearBuffer) {
+                clearBuffer()
+                return
+            }
+            if (res.newWorkingDir != null) {
+                activeWorkingDir = res.newWorkingDir
+            }
+            if (res.output.isNotEmpty()) {
+                appendOutput(res.output)
+            }
+            appendOutput("$ ")
+        }
     }
 
     override fun sendControlKey(key: String) {
-        val s = session ?: return
+        val s = session
+        if (s == null) {
+            when (key) {
+                "CTRL_L" -> clearBuffer()
+                "CTRL_C" -> appendOutput("^C\n$ ")
+                else -> {}
+            }
+            return
+        }
         val cursorApp = s.emulator?.isCursorKeysApplicationMode ?: false
         
         // Helper to get KeyHandler code
@@ -188,11 +271,18 @@ class TermuxTerminalRuntimeAdapter(
     }
 
     override fun currentWorkingDirectory(): String {
-        return workingDir.absolutePath
+        return activeWorkingDir.absolutePath
     }
 
     override fun clearBuffer() {
         _terminalOutput.value = "$ "
+        TerminalSessionLogger.info(LogCategory.IO, "Terminal buffer cleared")
+    }
+
+    override fun restartSession() {
+        TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Restarting terminal session...")
+        destroy()
+        startSession()
     }
 
     override fun destroy() {
@@ -202,6 +292,7 @@ class TermuxTerminalRuntimeAdapter(
         session = null
         selectionListeners.clear()
         _sessionState.value = TerminalSessionState.EXITED
+        TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Termux session destroyed")
     }
 
     // TerminalSessionClient callbacks
@@ -281,13 +372,27 @@ class TermuxTerminalRuntimeAdapter(
     
     override fun onEmulatorSet() {}
     
-    override fun logError(tag: String, message: String) {}
-    override fun logWarn(tag: String, message: String) {}
-    override fun logInfo(tag: String, message: String) {}
-    override fun logDebug(tag: String, message: String) {}
-    override fun logVerbose(tag: String, message: String) {}
-    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {}
-    override fun logStackTrace(tag: String, e: Exception) {}
+    override fun logError(tag: String, message: String) {
+        TerminalSessionLogger.error(LogCategory.DIAGNOSTIC, "[$tag] $message")
+    }
+    override fun logWarn(tag: String, message: String) {
+        TerminalSessionLogger.warn(LogCategory.DIAGNOSTIC, "[$tag] $message")
+    }
+    override fun logInfo(tag: String, message: String) {
+        TerminalSessionLogger.info(LogCategory.DIAGNOSTIC, "[$tag] $message")
+    }
+    override fun logDebug(tag: String, message: String) {
+        TerminalSessionLogger.debug(LogCategory.DIAGNOSTIC, "[$tag] $message")
+    }
+    override fun logVerbose(tag: String, message: String) {
+        TerminalSessionLogger.debug(LogCategory.DIAGNOSTIC, "[$tag] $message")
+    }
+    override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+        TerminalSessionLogger.error(LogCategory.DIAGNOSTIC, "[$tag] $message: ${e.message}")
+    }
+    override fun logStackTrace(tag: String, e: Exception) {
+        TerminalSessionLogger.error(LogCategory.DIAGNOSTIC, "[$tag] Exception: ${e.message}")
+    }
 
     private fun appendOutput(text: String) {
         val current = _terminalOutput.value

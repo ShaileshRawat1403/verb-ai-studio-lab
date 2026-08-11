@@ -216,3 +216,46 @@ JNIEXPORT void JNICALL Java_com_termux_terminal_JNI_close(JNIEnv* TERMUX_UNUSED(
 {
     close(fileDescriptor);
 }
+
+/* JNI Bindings for com.example.verb.terminal.NativeJNI */
+
+JNIEXPORT jint JNICALL Java_com_example_verb_terminal_NativeJNI_createSubprocess(
+        JNIEnv* env,
+        jclass clazz,
+        jstring cmd,
+        jstring cwd,
+        jobjectArray args,
+        jobjectArray envVars,
+        jintArray processIdArray,
+        jint rows,
+        jint columns,
+        jint cell_width,
+        jint cell_height)
+{
+    return Java_com_termux_terminal_JNI_createSubprocess(
+        env, clazz, cmd, cwd, args, envVars, processIdArray, rows, columns, cell_width, cell_height);
+}
+
+JNIEXPORT void JNICALL Java_com_example_verb_terminal_NativeJNI_setPtyWindowSize(
+        JNIEnv* env, jclass clazz, jint fd, jint rows, jint cols, jint cell_width, jint cell_height)
+{
+    Java_com_termux_terminal_JNI_setPtyWindowSize(env, clazz, fd, rows, cols, cell_width, cell_height);
+}
+
+JNIEXPORT void JNICALL Java_com_example_verb_terminal_NativeJNI_setPtyUTF8Mode(
+        JNIEnv* env, jclass clazz, jint fd)
+{
+    Java_com_termux_terminal_JNI_setPtyUTF8Mode(env, clazz, fd);
+}
+
+JNIEXPORT jint JNICALL Java_com_example_verb_terminal_NativeJNI_waitFor(
+        JNIEnv* env, jclass clazz, jint pid)
+{
+    return Java_com_termux_terminal_JNI_waitFor(env, clazz, pid);
+}
+
+JNIEXPORT void JNICALL Java_com_example_verb_terminal_NativeJNI_close(
+        JNIEnv* env, jclass clazz, jint fileDescriptor)
+{
+    Java_com_termux_terminal_JNI_close(env, clazz, fileDescriptor);
+}

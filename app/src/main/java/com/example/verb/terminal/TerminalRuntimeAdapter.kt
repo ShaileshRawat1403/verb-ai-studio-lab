@@ -58,6 +58,9 @@ interface TerminalRuntimeAdapter {
     /** Clears terminal buffer output */
     fun clearBuffer()
 
+    /** Restarts session from scratch, resetting errors and re-evaluating native bindings */
+    fun restartSession()
+
     /** Destroys active session and cleans up PTY resources */
     fun destroy()
 }

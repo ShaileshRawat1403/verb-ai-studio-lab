@@ -257,6 +257,7 @@ public final class TerminalView extends View {
             }
         });
         mScroller = new Scroller(context);
+        mRenderer = new TerminalRenderer(14, Typeface.MONOSPACE);
         AccessibilityManager am = (AccessibilityManager) context.getSystemService(Context.ACCESSIBILITY_SERVICE);
         mAccessibilityEnabled = am.isEnabled();
     }
@@ -984,7 +985,10 @@ public final class TerminalView extends View {
     public void updateSize() {
         int viewWidth = getWidth();
         int viewHeight = getHeight();
-        if (viewWidth == 0 || viewHeight == 0 || mTermSession == null) return;
+        if (mRenderer == null) {
+            mRenderer = new TerminalRenderer(14, Typeface.MONOSPACE);
+        }
+        if (viewWidth == 0 || viewHeight == 0 || mTermSession == null || mRenderer == null) return;
 
         // Set to 80 and 24 if you want to enable vttest.
         int newColumns = Math.max(4, (int) (viewWidth / mRenderer.mFontWidth));

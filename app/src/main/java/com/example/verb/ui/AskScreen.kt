@@ -155,8 +155,18 @@ fun AskScreen(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("ask_input_field"),
-                    placeholder = { Text("What do you want to do?") },
+                    placeholder = { Text("Ask anything or tell Verb what to do...") },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onSend = {
+                            if (queryInput.isNotBlank() && !isExecuting) {
+                                onSubmitQuery(queryInput)
+                            }
+                        }
+                    ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
@@ -206,6 +216,8 @@ fun AskScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val suggestions = listOf(
+                "Hi, who are you?",
+                "How do I use git?",
                 "Check my storage",
                 "Check memory",
                 "Show running processes",

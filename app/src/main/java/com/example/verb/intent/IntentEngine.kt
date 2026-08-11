@@ -97,7 +97,7 @@ class IntentEngine {
         // 6. Port inspection
         val portRegex = Regex("""port\s*(\d+)""")
         val portMatch = portRegex.find(normalized)
-        if (portMatch != null || normalized.contains("using port") || normalized.contains("port conflict")) {
+        if (portMatch != null || normalized.contains("using port") || normalized.contains("port conflict") || normalized.contains("port")) {
             val portStr = portMatch?.groupValues?.get(1) ?: extractNumbers(normalized).firstOrNull()
             if (portStr == null || portStr.toIntOrNull() == null || portStr.toInt() !in 1..65535) {
                 return VerbIntent(
@@ -151,6 +151,20 @@ class IntentEngine {
                 risk = ActionRisk.READ_ONLY,
                 confidence = 0.85f,
                 description = "Explain syntax and behavior of '$cmd'"
+            )
+        }
+
+        // 11. Natural Language Agent Query
+        val isAgentQuery = Regex("""\b(hi|hello|hey|who are you|how|tell|ask|can you|help|agent|git|node|bun|python)\b""").containsMatchIn(normalized)
+
+        if (isAgentQuery) {
+            return VerbIntent(
+                id = "agent.query",
+                name = "Verb AI Assistant",
+                parameters = mapOf("query" to query),
+                risk = ActionRisk.READ_ONLY,
+                confidence = 0.95f,
+                description = "Natural language agent response to '$query'"
             )
         }
 

@@ -124,9 +124,10 @@ fun VerbAppContent(viewModel: VerbViewModel) {
                 VerbTab.TERMINAL -> TerminalScreen(
                     terminalOutput = terminalOutput,
                     terminalRuntime = viewModel.terminalRuntime,
-                    onSendCommand = viewModel.terminalRuntime::sendCommand,
-                    onSendKey = viewModel.terminalRuntime::sendControlKey,
-                    onClearTerminal = viewModel.terminalRuntime::clearBuffer,
+                    terminalViewModel = viewModel.terminalViewModel,
+                    onSendCommand = viewModel.terminalViewModel::executeCommand,
+                    onSendKey = viewModel.terminalViewModel::sendControlKey,
+                    onClearTerminal = viewModel.terminalViewModel::clearTerminal,
                     onInspectText = viewModel::inspectSemanticText,
                     onSubmitIntent = viewModel::submitIntent
                 )

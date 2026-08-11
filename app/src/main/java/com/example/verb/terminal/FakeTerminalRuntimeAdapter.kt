@@ -58,8 +58,22 @@ class FakeTerminalRuntimeAdapter(
         }
     }
 
+    private var activeWorkingDir: File = workingDir
+
     override fun sendCommand(cmd: String) {
-        sendText("$cmd\n$ ")
+        sendText("$cmd\n")
+        val res = TerminalCommandEngine.executeCommand(cmd, activeWorkingDir)
+        if (res.shouldClearBuffer) {
+            clearBuffer()
+            return
+        }
+        if (res.newWorkingDir != null) {
+            activeWorkingDir = res.newWorkingDir
+        }
+        if (res.output.isNotEmpty()) {
+            sendText(res.output)
+        }
+        sendText("$ ")
     }
 
     override fun sendControlKey(key: String) {
@@ -89,10 +103,15 @@ class FakeTerminalRuntimeAdapter(
         selectionListeners.remove(listener)
     }
 
-    override fun currentWorkingDirectory(): String = workingDir.absolutePath
+    override fun currentWorkingDirectory(): String = activeWorkingDir.absolutePath
 
     override fun clearBuffer() {
         _terminalOutput.value = "$ "
+    }
+
+    override fun restartSession() {
+        destroy()
+        startSession()
     }
 
     override fun destroy() {

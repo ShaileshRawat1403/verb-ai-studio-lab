@@ -27,7 +27,8 @@ class VerbViewModel(application: Application) : AndroidViewModel(application) {
     private val actionRegistry = ActionRegistry(application.applicationContext)
     private val semanticEngine = SemanticEngine()
 
-    val terminalRuntime = TerminalRuntime(application.applicationContext.filesDir)
+    val terminalViewModel = TerminalViewModel(application)
+    val terminalRuntime get() = terminalViewModel.terminalRuntime
 
     private val _activeTab = MutableStateFlow(VerbTab.ASK)
     val activeTab: StateFlow<VerbTab> = _activeTab.asStateFlow()

@@ -19,12 +19,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Refresh
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.verb.terminal.TerminalSessionState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,19 +47,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.verb.terminal.MobileTerminalKeyboard
 import com.example.verb.terminal.SelectionChangeListener
+import com.example.verb.terminal.TerminalRuntime
 import com.example.verb.terminal.TerminalRuntimeAdapter
 import com.example.verb.terminal.TermuxTerminalRuntimeAdapter
 import com.termux.view.TerminalView
+
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import com.example.verb.viewmodel.TerminalTheme
+import com.example.verb.viewmodel.TerminalViewModel
 
 @Composable
 fun TerminalScreen(
     terminalOutput: String,
     terminalRuntime: TerminalRuntimeAdapter? = null,
+    terminalViewModel: TerminalViewModel? = null,
     onSendCommand: (String) -> Unit,
     onSendKey: (String) -> Unit,
     onClearTerminal: () -> Unit,
@@ -61,7 +84,53 @@ fun TerminalScreen(
     modifier: Modifier = Modifier
 ) {
     var showNaturalLanguageSheet by remember { mutableStateOf(false) }
+    var showDiagnosticsSheet by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
+
+    val currentTheme by (terminalViewModel?.terminalTheme?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(TerminalTheme.MIDNIGHT) })
+
+    val isDark = currentTheme == TerminalTheme.MIDNIGHT
+
+    val canvasBg = if (isDark) Color(0xFF0D0E12) else Color(0xFFF8FAFC)
+    val headerBg = if (isDark) Color(0xFF161820) else Color(0xFFE2E8F0)
+    val canvasTextColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF0F172A)
+    val inputBarBg = if (isDark) Color(0xFF161820) else Color(0xFFE2E8F0)
+    val inputTextColor = if (isDark) Color.White else Color(0xFF0F172A)
+    val inputFieldBg = if (isDark) Color(0xFF0D0E12) else Color.White
+    val shortcutChipBg = if (isDark) Color(0xFF222630) else Color(0xFFCBD5E1)
+    val shortcutChipTextColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+
+    val sessionState by (terminalRuntime?.sessionState?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(TerminalSessionState.FAILED) })
+
+    val shellAccessibilityResult by (terminalViewModel?.shellAccessibilityResult?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(null) })
+
+    val rawDiagnosticOutput by (terminalViewModel?.rawDiagnosticOutput?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(null) })
+
+    var commandInput by remember { mutableStateOf("") }
+
+    val handleKey: (String) -> Unit = { key ->
+        when (key) {
+            "UP" -> {
+                val prev = terminalViewModel?.navigateHistoryUp()
+                if (prev != null) {
+                    commandInput = prev
+                }
+                onSendKey(key)
+            }
+            "DOWN" -> {
+                val next = terminalViewModel?.navigateHistoryDown()
+                if (next != null) {
+                    commandInput = next
+                }
+                onSendKey(key)
+            }
+            else -> onSendKey(key)
+        }
+    }
 
     // Register SelectionChangeListener with TerminalRuntime for active exact selection monitoring
     DisposableEffect(terminalRuntime, onInspectText) {
@@ -84,12 +153,12 @@ fun TerminalScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0E12))
+            .background(canvasBg)
     ) {
         // Thin Terminal Header Bar
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF161820)
+            color = headerBg
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -133,8 +202,8 @@ fun TerminalScreen(
 
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF222630),
-                            modifier = Modifier.clickable { /* Session Selector */ }
+                            color = shortcutChipBg,
+                            modifier = Modifier.clickable { showDiagnosticsSheet = true }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -144,43 +213,116 @@ fun TerminalScreen(
                                     text = "local",
                                     fontSize = 12.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFF94A3B8)
+                                    color = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569)
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = null,
-                                    tint = Color(0xFF94A3B8),
+                                    tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
 
-                        // Active status indicator dot
-                        val statusColor = when (terminalRuntime?.sessionState?.value) {
-                            com.example.verb.terminal.TerminalSessionState.RUNNING -> Color(0xFF22C55E)
-                            com.example.verb.terminal.TerminalSessionState.STARTING -> Color(0xFFEAB308)
-                            else -> Color(0xFFEF4444)
+                        // Reactive ConnectionState indicator pill in terminal header
+                        val (statusText, statusColor) = when {
+                            sessionState == TerminalSessionState.RUNNING -> "Connected" to Color(0xFF22C55E) // Green dot for interactive session
+                            sessionState == TerminalSessionState.STARTING -> "Connecting..." to Color(0xFFEAB308) // Yellow dot
+                            sessionState == TerminalSessionState.FAILED -> "Error" to Color(0xFFEF4444) // Red dot for errors
+                            sessionState == TerminalSessionState.EXITED -> "Disconnected" to Color(0xFF94A3B8)
+                            sessionState == TerminalSessionState.STOPPING -> "Stopping..." to Color(0xFFF97316)
+                            else -> "Disconnected" to Color(0xFF94A3B8)
                         }
-                        Box(
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = statusColor.copy(alpha = 0.15f),
                             modifier = Modifier
-                                .size(8.dp)
-                                .background(statusColor, CircleShape)
-                        )
+                                .clickable { showDiagnosticsSheet = true }
+                                .testTag("connection_state_indicator")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(statusColor, CircleShape)
+                                        .testTag("connection_status_dot")
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = statusText,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = statusColor
+                                )
+                            }
+                        }
                     }
 
-                    // Quick Action Buttons
+                    // Quick Action Buttons (Diagnostics Button, Clear, Theme Switcher)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Button(
+                            onClick = { terminalViewModel?.runEnvironmentDiagnostics() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .height(28.dp)
+                                .testTag("btn_run_env_diagnostics")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Terminal,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Diagnostics", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        IconButton(
+                            onClick = { terminalViewModel?.toggleTheme() },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("btn_toggle_terminal_theme")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Toggle Terminal Theme",
+                                tint = if (isDark) Color(0xFFFACC15) else Color(0xFF6366F1),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showDiagnosticsSheet = true },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("btn_open_diagnostics")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = "Terminal diagnostics and logs",
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
                         IconButton(
                             onClick = onClearTerminal,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("btn_clear_terminal_header")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CleaningServices,
                                 contentDescription = "Clear terminal",
-                                tint = Color(0xFF94A3B8),
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -189,9 +331,42 @@ fun TerminalScreen(
             }
         }
 
+        // Permission Error Alert Banner if ShellAccessibilityCheck denies access
+        if (shellAccessibilityResult?.permissionError != null) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .testTag("shell_accessibility_permission_error"),
+                color = Color(0xFF7F1D1D),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Permission Error",
+                        tint = Color(0xFFFCA5A5),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = shellAccessibilityResult?.permissionError ?: "Permission Error: Shell access denied",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
         // Real Terminal Canvas View boundary
-        val termuxAdapter = terminalRuntime as? TermuxTerminalRuntimeAdapter
-        if (termuxAdapter != null) {
+        val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
+            ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
+        val hasNativePty = termuxAdapter?.hasNativeSession == true
+        if (hasNativePty && termuxAdapter?.sessionState?.value == com.example.verb.terminal.TerminalSessionState.RUNNING) {
             AndroidView(
                 factory = { ctx ->
                     termuxAdapter.terminalView ?: TerminalView(ctx, null).also {
@@ -205,7 +380,7 @@ fun TerminalScreen(
                     .testTag("termux_terminal_view")
             )
         } else {
-            // Compose selection view fallback for unit tests and headless environments
+            // High-performance monospaced terminal canvas
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -215,10 +390,10 @@ fun TerminalScreen(
             ) {
                 SelectionContainer {
                     Text(
-                        text = terminalOutput.ifEmpty { "$ " },
+                        text = terminalOutput.ifEmpty { "Verb Termux Session Active\n$ " },
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = Color(0xFFE2E8F0),
+                        color = canvasTextColor,
                         lineHeight = 18.sp,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -228,9 +403,168 @@ fun TerminalScreen(
             }
         }
 
+        // Autocomplete suggestions row
+        val suggestions = remember(commandInput, terminalViewModel) {
+            terminalViewModel?.getAutocompleteSuggestions(commandInput) ?: run {
+                val trimmed = commandInput.trimStart().lowercase()
+                if (trimmed.isEmpty()) emptyList()
+                else listOf("node", "npm", "git", "python", "bun", "clear", "exit", "ls", "help", "mkdir", "cd", "pwd")
+                    .filter { it.startsWith(trimmed) && it != trimmed }
+                    .take(6)
+            }
+        }
+
+        if (suggestions.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .background(if (isDark) Color(0xFF1B1E29) else Color(0xFFE2E8F0))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Suggestions:",
+                    fontSize = 11.sp,
+                    color = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                suggestions.forEach { sug ->
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isDark) Color(0xFF6366F1).copy(alpha = 0.25f) else Color(0xFF6366F1).copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .clickable { commandInput = sug }
+                            .testTag("autocomplete_suggestion_$sug")
+                    ) {
+                        Text(
+                            text = sug,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isDark) Color(0xFFC7D2FE) else Color(0xFF3730A3),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Terminal Shortcuts Toolbar above the input field
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .background(if (isDark) Color(0xFF14161F) else Color(0xFFCBD5E1))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val shortcuts = listOf("clear", "exit", "ls", "help", "pwd", "top")
+            shortcuts.forEach { shortcut ->
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = shortcutChipBg,
+                    modifier = Modifier
+                        .clickable {
+                            if (shortcut == "clear") {
+                                onClearTerminal()
+                                onSendCommand("clear")
+                            } else {
+                                onSendCommand(shortcut)
+                            }
+                        }
+                        .testTag("btn_shortcut_$shortcut")
+                ) {
+                    Text(
+                        text = shortcut,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = shortcutChipTextColor,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        // Interactive Command Input Field
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(inputBarBg)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$ ",
+                color = Color(0xFF6366F1),
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            OutlinedTextField(
+                value = commandInput,
+                onValueChange = { commandInput = it },
+                placeholder = {
+                    Text(
+                        "Enter command...",
+                        color = if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8),
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("terminal_command_input"),
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = inputTextColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (commandInput.isNotBlank()) {
+                            onSendCommand(commandInput)
+                            commandInput = ""
+                        }
+                    }
+                ),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = if (isDark) Color(0xFF222630) else Color(0xFF94A3B8),
+                    focusedContainerColor = inputFieldBg,
+                    unfocusedContainerColor = inputFieldBg
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    if (commandInput.isNotBlank()) {
+                        onSendCommand(commandInput)
+                        commandInput = ""
+                    }
+                },
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("btn_send_terminal_command")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send Command",
+                    tint = if (commandInput.isNotBlank()) Color(0xFF6366F1) else Color(0xFF475569),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
         // Contextual Touch Control Strip for P0.3
         MobileTerminalKeyboard(
-            onSendKey = onSendKey,
+            onSendKey = handleKey,
             onSendCommand = onSendCommand,
             terminalOutput = terminalOutput,
             onInspectOutput = onInspectText
@@ -245,6 +579,72 @@ fun TerminalScreen(
                 showNaturalLanguageSheet = false
                 onSubmitIntent(intent)
             }
+        )
+    }
+
+    // Diagnostics & Session Logger Modal
+    if (showDiagnosticsSheet) {
+        TerminalDiagnosticsSheet(
+            terminalRuntime = terminalRuntime,
+            onDismiss = { showDiagnosticsSheet = false }
+        )
+    }
+
+    // Raw Diagnostic Output Dialog
+    if (rawDiagnosticOutput != null) {
+        AlertDialog(
+            onDismissRequest = { terminalViewModel?.clearDiagnosticOutput() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Terminal,
+                        contentDescription = null,
+                        tint = Color(0xFF6366F1),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Terminal Raw Diagnostics (env & \$PATH)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(360.dp)
+                        .background(Color(0xFF090A0E), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = rawDiagnosticOutput!!,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = Color(0xFFE2E8F0),
+                            lineHeight = 16.sp,
+                            modifier = Modifier.testTag("raw_diagnostics_output_text")
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { terminalViewModel?.clearDiagnosticOutput() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("btn_close_raw_diagnostics")
+                ) {
+                    Text("Close", fontSize = 12.sp)
+                }
+            },
+            containerColor = Color(0xFF161820),
+            titleContentColor = Color.White,
+            shape = RoundedCornerShape(14.dp)
         )
     }
 }
