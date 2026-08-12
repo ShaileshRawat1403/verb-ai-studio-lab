@@ -125,6 +125,11 @@ fun SystemScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // USB Debugging Connection Diagnostic Component
+        UsbDebuggingDiagnosticCard()
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Storage Usage Gauge Card
         Card(
             modifier = Modifier.fillMaxWidth(),

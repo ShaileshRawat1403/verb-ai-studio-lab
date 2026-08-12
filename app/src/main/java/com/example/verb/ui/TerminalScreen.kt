@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,6 +55,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.example.verb.terminal.AnsiTextParser
 import com.example.verb.terminal.MobileTerminalKeyboard
 import com.example.verb.terminal.SelectionChangeListener
 import com.example.verb.terminal.TerminalRuntime
@@ -158,7 +160,9 @@ fun TerminalScreen(
     ) {
         // Thin Terminal Header Bar
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding(),
             color = headerBg
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -370,7 +374,7 @@ fun TerminalScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 6.dp)
                 .background(
-                    color = if (isDark) Color(0xFF090A0F) else Color(0xFF0F172A),
+                    color = if (isDark) Color(0xFF0A0C10) else Color(0xFF1E293B),
                     shape = RoundedCornerShape(12.dp)
                 )
                 .border(
@@ -378,7 +382,7 @@ fun TerminalScreen(
                     color = if (isDark) Color(0xFF1E293B) else Color(0xFF334155),
                     shape = RoundedCornerShape(12.dp)
                 )
-                .padding(12.dp)
+                .padding(14.dp)
                 .verticalScroll(scrollState)
         ) {
             val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
@@ -397,12 +401,22 @@ fun TerminalScreen(
                         .testTag("termux_terminal_view")
                 )
             } else {
+                val rawText = if (terminalOutput.isNotBlank()) {
+                    terminalOutput
+                } else {
+                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help' or tap a command shortcut below to get started.\n$ "
+                }
+                
+                val annotatedOutput = remember<androidx.compose.ui.text.AnnotatedString>(rawText, isDark) {
+                    val defaultTextColor: Color = if (isDark) Color(0xFF4ADE80) else Color(0xFF38BDF8)
+                    AnsiTextParser.parse(rawText, defaultColor = defaultTextColor)
+                }
+
                 SelectionContainer {
                     Text(
-                        text = if (terminalOutput.isNotBlank()) terminalOutput else "Verb Local PTY Active\n[Universal Command Engine Ready - Type 'help' or commands below]\n$ ",
+                        text = annotatedOutput,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = Color(0xFF38BDF8),
                         lineHeight = 19.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier
@@ -418,7 +432,7 @@ fun TerminalScreen(
             terminalViewModel?.getAutocompleteSuggestions(commandInput) ?: run {
                 val trimmed = commandInput.trimStart().lowercase()
                 if (trimmed.isEmpty()) emptyList()
-                else listOf("node", "npm", "git", "python", "bun", "clear", "exit", "ls", "help", "mkdir", "cd", "pwd")
+                else listOf("node", "npm", "git", "python", "bun", "clear", "exit", "ls", "help", "mkdir", "cd", "pwd", "top", "whoami", "date", "df", "free", "env")
                     .filter { it.startsWith(trimmed) && it != trimmed }
                     .take(6)
             }
@@ -471,7 +485,7 @@ fun TerminalScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val shortcuts = listOf("clear", "exit", "ls", "help", "pwd", "top")
+            val shortcuts = listOf("clear", "ls -la", "pwd", "help", "top", "whoami", "date", "df -h", "env", "node -v", "python3 --version", "git status")
             shortcuts.forEach { shortcut ->
                 Surface(
                     shape = RoundedCornerShape(6.dp),
