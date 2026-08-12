@@ -59,6 +59,9 @@ fun VerbAppContent(viewModel: VerbViewModel) {
     val historyList by viewModel.historyList.collectAsStateWithLifecycle()
     val confirmationPending by viewModel.confirmationPendingResult.collectAsStateWithLifecycle()
     val semanticEntity by viewModel.activeSemanticEntity.collectAsStateWithLifecycle()
+    val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val commandHistory by viewModel.roomCommandHistory.collectAsStateWithLifecycle()
+    val terminalOutputs by viewModel.roomTerminalOutputs.collectAsStateWithLifecycle()
 
     val terminalOutput by viewModel.terminalRuntime.terminalOutput.collectAsStateWithLifecycle()
     val isSessionActive by viewModel.terminalRuntime.isSessionActive.collectAsStateWithLifecycle()
@@ -109,8 +112,11 @@ fun VerbAppContent(viewModel: VerbViewModel) {
                     currentResult = currentResult,
                     historyList = historyList,
                     confirmationPending = confirmationPending,
+                    chatMessages = chatMessages,
                     onQueryChange = viewModel::updateQueryInput,
                     onSubmitQuery = viewModel::submitQuery,
+                    onExecuteCommandFromChat = viewModel::executeCommandFromChat,
+                    onClearMemory = viewModel::clearAgentMemory,
                     onConfirmAction = viewModel::confirmPendingAction,
                     onDismissConfirmation = viewModel::dismissConfirmation,
                     onOpenTerminal = viewModel::openTerminal,
@@ -118,7 +124,10 @@ fun VerbAppContent(viewModel: VerbViewModel) {
                 )
 
                 VerbTab.SYSTEM -> SystemScreen(
-                    isTerminalSessionActive = isSessionActive
+                    isTerminalSessionActive = isSessionActive,
+                    commandHistory = commandHistory,
+                    terminalOutputs = terminalOutputs,
+                    onClearDatabase = viewModel::clearAgentMemory
                 )
 
                 VerbTab.TERMINAL -> TerminalScreen(

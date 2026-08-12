@@ -27,7 +27,7 @@ class TermuxTerminalRuntimeAdapter(
 ) : TerminalRuntimeAdapter, TerminalSessionClient, TerminalViewClient {
     private var session: TerminalSession? = null
     var terminalView: TerminalView? = null
-    val hasNativeSession: Boolean get() = session != null
+    val hasNativeSession: Boolean get() = session?.isRunning == true
 
     fun bindTerminalView(view: TerminalView) {
         terminalView = view
@@ -131,6 +131,7 @@ class TermuxTerminalRuntimeAdapter(
                 TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Native PTY TerminalSession running successfully [PID=${newSession.pid}]")
                 terminalView?.attachSession(newSession)
             } else {
+                session = null
                 _isSessionActive.value = false
                 _sessionState.value = TerminalSessionState.FAILED
                 val failReason = when {
@@ -142,6 +143,7 @@ class TermuxTerminalRuntimeAdapter(
                 appendOutput("\n[FAILED to start Termux PTY session: $failReason]\n[Universal Command Engine Active - Type 'help' or commands (git, node, bun, python, cd, ls) below]\n")
             }
         } catch (t: Throwable) {
+            session = null
             _isSessionActive.value = false
             _sessionState.value = TerminalSessionState.FAILED
             val failReason = when {
@@ -155,7 +157,7 @@ class TermuxTerminalRuntimeAdapter(
     }
 
     override fun attachSession() {
-        if (session != null && _isSessionActive.value) {
+        if (session != null && session?.isRunning == true && _isSessionActive.value) {
             _sessionState.value = TerminalSessionState.RUNNING
         } else {
             startSession()
@@ -163,7 +165,10 @@ class TermuxTerminalRuntimeAdapter(
     }
 
     override fun sendText(text: String) {
-        session?.write(text)
+        val s = session
+        if (s != null && s.isRunning) {
+            s.write(text)
+        }
     }
 
     private var activeWorkingDir: File = workingDir
@@ -177,10 +182,13 @@ class TermuxTerminalRuntimeAdapter(
 
         _isSessionActive.value = true
 
-        if (session != null) {
+        val activeSession = session
+        if (activeSession != null && activeSession.isRunning) {
             _sessionState.value = TerminalSessionState.RUNNING
             sendText("$cmd\n")
         } else {
+            session = null
+            _sessionState.value = TerminalSessionState.RUNNING
             appendOutput("$cmd\n")
             val res = TerminalCommandEngine.executeCommand(cmd, activeWorkingDir)
             if (res.shouldClearBuffer) {
@@ -308,6 +316,7 @@ class TermuxTerminalRuntimeAdapter(
     override fun onTitleChanged(changedSession: TerminalSession) {}
 
     override fun onSessionFinished(finishedSession: TerminalSession) {
+        session = null
         _isSessionActive.value = false
         _sessionState.value = if (finishedSession.exitStatus == 0) TerminalSessionState.EXITED else TerminalSessionState.FAILED
         appendOutput("\n[Session terminated with code ${finishedSession.exitStatus}]\n$ ")

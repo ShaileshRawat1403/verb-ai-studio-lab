@@ -3,6 +3,7 @@ package com.example.verb.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.verb.db.VerbRepository
 import com.example.verb.terminal.LogCategory
 import com.example.verb.terminal.ShellAccessibilityCheck
 import com.example.verb.terminal.ShellAccessibilityResult
@@ -213,6 +214,20 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         }
         historyIndex = -1
         terminalRuntime.sendCommand(cmd)
+
+        // Persist terminal output and executed command to Room database
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val repository = VerbRepository.getInstance(getApplication())
+                repository.recordTerminalOutput(
+                    command = cmd,
+                    output = terminalRuntime.terminalOutput.value,
+                    workingDir = terminalRuntime.currentWorkingDirectory()
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun sendControlKey(key: String) {

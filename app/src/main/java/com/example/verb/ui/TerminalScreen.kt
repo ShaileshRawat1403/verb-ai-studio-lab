@@ -2,6 +2,7 @@ package com.example.verb.ui
 
 import com.example.verb.model.VerbIntent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -362,39 +363,48 @@ fun TerminalScreen(
             }
         }
 
-        // Real Terminal Canvas View boundary
-        val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
-            ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
-        val hasNativePty = termuxAdapter?.hasNativeSession == true
-        if (hasNativePty && termuxAdapter?.sessionState?.value == com.example.verb.terminal.TerminalSessionState.RUNNING) {
-            AndroidView(
-                factory = { ctx ->
-                    termuxAdapter.terminalView ?: TerminalView(ctx, null).also {
-                        termuxAdapter.bindTerminalView(it)
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(12.dp)
-                    .testTag("termux_terminal_view")
-            )
-        } else {
-            // High-performance monospaced terminal canvas
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(12.dp)
-                    .verticalScroll(scrollState)
-            ) {
+        // High-Performance Modern Terminal Canvas Container
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .background(
+                    color = if (isDark) Color(0xFF090A0F) else Color(0xFF0F172A),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) Color(0xFF1E293B) else Color(0xFF334155),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .padding(12.dp)
+                .verticalScroll(scrollState)
+        ) {
+            val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
+                ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
+            val hasNativePty = termuxAdapter?.hasNativeSession == true
+
+            if (hasNativePty && termuxAdapter?.terminalView != null) {
+                AndroidView(
+                    factory = { ctx ->
+                        termuxAdapter.terminalView ?: TerminalView(ctx, null).also {
+                            termuxAdapter.bindTerminalView(it)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("termux_terminal_view")
+                )
+            } else {
                 SelectionContainer {
                     Text(
-                        text = terminalOutput.ifEmpty { "Verb Termux Session Active\n$ " },
+                        text = if (terminalOutput.isNotBlank()) terminalOutput else "Verb Local PTY Active\n[Universal Command Engine Ready - Type 'help' or commands below]\n$ ",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
-                        color = canvasTextColor,
-                        lineHeight = 18.sp,
+                        color = Color(0xFF38BDF8),
+                        lineHeight = 19.sp,
+                        fontWeight = FontWeight.Medium,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("terminal_output_text")
