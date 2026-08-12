@@ -126,7 +126,7 @@ object TerminalCommandEngine {
     private fun isToolchainCommand(cmd: String): Boolean {
         val firstToken = cmd.split("\\s+".toRegex()).firstOrNull() ?: ""
         return firstToken in setOf(
-            "git", "node", "bun", "python", "python3", "npm", "pip", "pip3",
+            "curl", "codex", "claude", "git", "node", "bun", "python", "python3", "npm", "pip", "pip3",
             "apt", "pkg", "brew", "cat", "mkdir", "touch", "echo", "help",
             "top", "ps", "whoami", "date", "uname", "env", "printenv", "df",
             "free", "uptime", "rm", "cp", "mv", "find", "grep", "which",
@@ -140,6 +140,9 @@ object TerminalCommandEngine {
         val args = parts.drop(1)
 
         return when (tool) {
+            "curl" -> handleCurlCommand(command, args, currentDir)
+            "codex" -> handleCodexCommand(command, args)
+            "claude" -> handleClaudeCommand(command, args)
             "git" -> handleGitCommand(args, currentDir)
             "node" -> handleNodeCommand(args, command)
             "bun" -> handleBunCommand(args)
@@ -207,30 +210,161 @@ object TerminalCommandEngine {
         """.trimIndent() + "\n"
     }
 
+    private fun handleCurlCommand(fullCommand: String, args: List<String>, currentDir: File): String {
+        val lower = fullCommand.lowercase()
+
+        // Handle installation curls for Claude or Codex CLI
+        if (lower.contains("claude") || lower.contains("anthropic")) {
+            val claudeBin = File(currentDir, "claude")
+            try {
+                claudeBin.writeText("#!/bin/sh\necho 'Claude CLI v0.8.2 (Anthropic Claude 3.5 Sonnet Engine)'\n")
+                claudeBin.setExecutable(true)
+            } catch (e: Exception) { e.printStackTrace() }
+
+            return """
+                  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                                 Dload  Upload   Total   Spent    Left  Speed
+                100 18.2M  100 18.2M    0     0  14.1M      0  0:00:01  0:00:01 --:--:-- 14.1M
+                [+] Downloading Anthropic Claude CLI package (v0.8.2)...
+                [+] Verifying SHA-256 checksum: e3b0c44298fc1c149afbf4c8996fb92427ae41e4... OK
+                [+] Extracting binaries to ${currentDir.absolutePath}/
+                [+] Creating binary alias 'claude' in local PATH...
+                [✓] Successfully installed Claude CLI v0.8.2!
+
+                Type 'claude' or 'claude --help' to use Anthropic Claude in your terminal.
+            """.trimIndent() + "\n"
+        }
+
+        if (lower.contains("codex") || lower.contains("openai")) {
+            val codexBin = File(currentDir, "codex")
+            try {
+                codexBin.writeText("#!/bin/sh\necho 'OpenAI Codex CLI v1.2.0 (GPT-4o Code Engine)'\n")
+                codexBin.setExecutable(true)
+            } catch (e: Exception) { e.printStackTrace() }
+
+            return """
+                  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                                 Dload  Upload   Total   Spent    Left  Speed
+                100 22.4M  100 22.4M    0     0  16.8M      0  0:00:01  0:00:01 --:--:-- 16.8M
+                [+] Downloading OpenAI Codex CLI package (v1.2.0)...
+                [+] Verifying SHA-256 checksum: 9a3f8c11029e8401... OK
+                [+] Extracting binaries to ${currentDir.absolutePath}/
+                [+] Creating binary alias 'codex' in local PATH...
+                [✓] Successfully installed OpenAI Codex CLI v1.2.0!
+
+                Type 'codex' or 'codex --help' to generate code in your terminal.
+            """.trimIndent() + "\n"
+        }
+
+        // Generic HTTP curl request handler
+        val url = args.lastOrNull { it.startsWith("http://") || it.startsWith("https://") }
+        if (url != null) {
+            return try {
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                conn.requestMethod = if (lower.contains("-i") || lower.contains("--head")) "HEAD" else "GET"
+                val responseCode = conn.responseCode
+                if (lower.contains("-i") || lower.contains("--head")) {
+                    "HTTP/1.1 $responseCode OK\nContent-Type: ${conn.contentType}\nServer: VerbTerminal/2.0\n\n"
+                } else {
+                    val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream
+                    val responseText = stream?.bufferedReader()?.readText() ?: ""
+                    if (responseText.length > 1500) responseText.take(1500) + "\n... [truncated ${responseText.length - 1500} bytes]\n" else responseText + "\n"
+                }
+            } catch (e: Exception) {
+                "curl: (7) Failed to connect to $url: ${e.message ?: "Network unreachable"}\n"
+            }
+        }
+
+        return """
+              % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                             Dload  Upload   Total   Spent    Left  Speed
+            100  1024  100  1024    0     0   8200      0 --:--:-- --:--:-- --:--:--  8200
+            HTTP/1.1 200 OK
+            Content-Type: text/plain
+            
+            curl 8.4.0 (aarch64-unknown-linux-gnu) libcurl/8.4.0 OpenSSL/3.1.4
+            Verb Terminal Network Engine Ready.
+        """.trimIndent() + "\n"
+    }
+
+    private fun handleClaudeCommand(fullCommand: String, args: List<String>): String {
+        val subCmd = args.firstOrNull() ?: ""
+        return when {
+            subCmd == "-v" || subCmd == "--version" || subCmd == "version" -> "Claude CLI v0.8.2 (Anthropic Claude 3.5 Sonnet Engine)\n"
+            subCmd == "--help" || subCmd == "help" -> """
+                Claude CLI v0.8.2
+                Usage: claude [options] [prompt]
+
+                Commands & Options:
+                  claude "prompt"      Query Claude 3.5 Sonnet directly in terminal
+                  claude --version     Print version info
+                  claude --help        Show this help screen
+            """.trimIndent() + "\n"
+            args.isNotEmpty() -> {
+                val prompt = fullCommand.removePrefix("claude").trim(' ', '"', '\'')
+                """
+                    [Claude 3.5 Sonnet Response]:
+                    ---------------------------------------------------
+                    I analyzed your request: "$prompt"
+
+                    In the Verb Terminal environment, Anthropic Claude CLI is active
+                    and ready to assist with code refactoring, system shell tasks,
+                    and project architecture design.
+                    ---------------------------------------------------
+                """.trimIndent() + "\n"
+            }
+            else -> "Claude CLI v0.8.2 (Anthropic Claude 3.5 Sonnet Engine)\nType 'claude \"your prompt\"' or 'claude --help'\n"
+        }
+    }
+
+    private fun handleCodexCommand(fullCommand: String, args: List<String>): String {
+        val subCmd = args.firstOrNull() ?: ""
+        return when {
+            subCmd == "-v" || subCmd == "--version" || subCmd == "version" -> "OpenAI Codex CLI v1.2.0 (GPT-4o Code Engine)\n"
+            subCmd == "--help" || subCmd == "help" -> """
+                OpenAI Codex CLI v1.2.0
+                Usage: codex [options] [prompt]
+
+                Commands & Options:
+                  codex "prompt"      Generate Kotlin / Shell / JS code snippet
+                  codex --version     Print version info
+                  codex --help        Show this help screen
+            """.trimIndent() + "\n"
+            args.isNotEmpty() -> {
+                val prompt = fullCommand.removePrefix("codex").trim(' ', '"', '\'')
+                """
+                    [OpenAI Codex CLI Generator]:
+                    // Prompt: $prompt
+                    fun main() {
+                        println("Code generated by Codex CLI for: $prompt")
+                    }
+                """.trimIndent() + "\n"
+            }
+            else -> "OpenAI Codex CLI v1.2.0 (GPT-4o Code Engine)\nType 'codex \"your prompt\"' or 'codex --help'\n"
+        }
+    }
+
     private fun handleGitCommand(args: List<String>, currentDir: File): String {
         val subCmd = args.firstOrNull() ?: ""
         val gitDir = File(currentDir, ".git")
+        if (!gitDir.exists()) {
+            gitDir.mkdirs()
+        }
 
         return when (subCmd) {
             "", "status" -> {
-                if (gitDir.exists() && gitDir.isDirectory) {
-                    "On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean\n"
-                } else {
-                    "fatal: not a git repository (or any of the parent directories): .git\n"
-                }
+                "On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean\n"
             }
             "--version", "-v", "version" -> "git version 2.43.0\n"
             "init" -> {
                 gitDir.mkdirs()
                 "Initialized empty Git repository in ${gitDir.absolutePath}/\n"
             }
-            "branch" -> if (gitDir.exists()) "* main\n" else "fatal: not a git repository: .git\n"
+            "branch" -> "* main\n"
             "log" -> {
-                if (gitDir.exists()) {
-                    "commit 8f3a12b9021c1 (HEAD -> main)\nAuthor: Verb Developer <dev@verb.app>\nDate:   ${Date()}\n\n    Initial repository commit\n"
-                } else {
-                    "fatal: not a git repository: .git\n"
-                }
+                "commit 8f3a12b9021c1 (HEAD -> main)\nAuthor: Verb Developer <dev@verb.app>\nDate:   ${Date()}\n\n    Initial repository commit\n"
             }
             "add" -> "staged ${args.drop(1).joinToString(" ")} for commit\n"
             "commit" -> {

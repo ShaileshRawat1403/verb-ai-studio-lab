@@ -156,13 +156,12 @@ fun TerminalScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .background(canvasBg)
     ) {
         // Thin Terminal Header Bar
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding(),
+            modifier = Modifier.fillMaxWidth(),
             color = headerBg
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -404,7 +403,7 @@ fun TerminalScreen(
                 val rawText = if (terminalOutput.isNotBlank()) {
                     terminalOutput
                 } else {
-                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help' or tap a command shortcut below to get started.\n$ "
+                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ "
                 }
                 
                 val annotatedOutput = remember<androidx.compose.ui.text.AnnotatedString>(rawText, isDark) {
@@ -485,7 +484,23 @@ fun TerminalScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val shortcuts = listOf("clear", "ls -la", "pwd", "help", "top", "whoami", "date", "df -h", "env", "node -v", "python3 --version", "git status")
+            val shortcuts = listOf(
+                "curl -fsSL https://claude.ai/install.sh | sh",
+                "curl -fsSL https://codex.openai.com/install.sh | sh",
+                "claude --version",
+                "codex --version",
+                "git status",
+                "clear",
+                "ls -la",
+                "pwd",
+                "help",
+                "top",
+                "whoami",
+                "date",
+                "df -h",
+                "env",
+                "node -v"
+            )
             shortcuts.forEach { shortcut ->
                 Surface(
                     shape = RoundedCornerShape(6.dp),
