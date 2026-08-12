@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import com.example.verb.terminal.AnsiTextParser
 import com.example.verb.terminal.MobileTerminalKeyboard
 import com.example.verb.terminal.SelectionChangeListener
@@ -114,6 +121,12 @@ fun TerminalScreen(
         ?: remember { mutableStateOf(null) })
 
     var commandInput by remember { mutableStateOf("") }
+    var showAiHelper by remember { mutableStateOf(false) }
+
+    val drawerState = androidx.compose.material3.rememberDrawerState(
+        initialValue = androidx.compose.material3.DrawerValue.Closed
+    )
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     val handleKey: (String) -> Unit = { key ->
         when (key) {
@@ -153,14 +166,32 @@ fun TerminalScreen(
         scrollState.animateScrollTo(scrollState.maxValue)
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-            .background(canvasBg)
+    androidx.compose.material3.ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            androidx.compose.material3.ModalDrawerSheet(
+                drawerContainerColor = headerBg,
+                drawerContentColor = canvasTextColor
+            ) {
+                FileExplorerDrawer(
+                    terminalRuntime = terminalRuntime,
+                    isDark = isDark,
+                    onFileClicked = { file ->
+                        commandInput += file.name
+                        scope.launch { drawerState.close() }
+                    }
+                )
+            }
+        }
     ) {
-        // Thin Terminal Header Bar
-        Surface(
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .background(canvasBg)
+        ) {
+            // Thin Terminal Header Bar
+            Surface(
             modifier = Modifier.fillMaxWidth(),
             color = headerBg
         ) {
@@ -288,6 +319,34 @@ fun TerminalScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Diagnostics", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+                        
+                        IconButton(
+                            onClick = { scope.launch { drawerState.open() } },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("btn_open_file_explorer")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Files",
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showAiHelper = true },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("btn_ai_terminal_help")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "AI Help",
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
                         IconButton(
                             onClick = { terminalViewModel?.toggleTheme() },
@@ -384,7 +443,7 @@ fun TerminalScreen(
                 .padding(14.dp)
                 .verticalScroll(scrollState)
         ) {
-            val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
+            val termuxAdapter = null // (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
                 ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
             val hasNativePty = termuxAdapter?.hasNativeSession == true
 
@@ -406,35 +465,69 @@ fun TerminalScreen(
                     "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ "
                 }
                 
-                val annotatedOutput = remember<androidx.compose.ui.text.AnnotatedString>(rawText, isDark) {
-                    val defaultTextColor: Color = if (isDark) Color(0xFF4ADE80) else Color(0xFF38BDF8)
-                    AnsiTextParser.parse(rawText, defaultColor = defaultTextColor)
+                var cursorVisible by remember { mutableStateOf(true) }
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        kotlinx.coroutines.delay(500)
+                        cursorVisible = !cursorVisible
+                    }
                 }
 
-                SelectionContainer {
-                    Text(
-                        text = annotatedOutput,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("terminal_output_text")
-                    )
+                val cursorChar = if (cursorVisible) "█" else " "
+
+                val annotatedOutput = remember<androidx.compose.ui.text.AnnotatedString>(rawText, cursorVisible, isDark) {
+                    val defaultTextColor: Color = if (isDark) Color(0xFF4ADE80) else Color(0xFF38BDF8)
+                    val parsed = AnsiTextParser.parse(rawText + cursorChar, defaultColor = defaultTextColor)
+                    AnsiTextParser.applyBasicSyntaxHighlighting(parsed, isDark)
+                }
+
+                var showContextMenu by remember { mutableStateOf(false) }
+                val clipboardManager = LocalClipboardManager.current
+
+                Box(modifier = Modifier.pointerInput(Unit) {
+                    detectTapGestures(onLongPress = { showContextMenu = true })
+                }) {
+                    SelectionContainer {
+                        Text(
+                            text = annotatedOutput,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("terminal_output_text")
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showContextMenu,
+                        onDismissRequest = { showContextMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Copy Output") },
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(rawText))
+                                showContextMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Paste to Input") },
+                            onClick = {
+                                clipboardManager.getText()?.let {
+                                    commandInput += it.text
+                                }
+                                showContextMenu = false
+                            }
+                        )
+                    }
                 }
             }
         }
 
         // Autocomplete suggestions row
         val suggestions = remember(commandInput, terminalViewModel) {
-            terminalViewModel?.getAutocompleteSuggestions(commandInput) ?: run {
-                val trimmed = commandInput.trimStart().lowercase()
-                if (trimmed.isEmpty()) emptyList()
-                else listOf("node", "npm", "git", "python", "bun", "clear", "exit", "ls", "help", "mkdir", "cd", "pwd", "top", "whoami", "date", "df", "free", "env")
-                    .filter { it.startsWith(trimmed) && it != trimmed }
-                    .take(6)
-            }
+            terminalViewModel?.getAutocompleteSuggestions(commandInput) ?: emptyList()
         }
 
         if (suggestions.isNotEmpty()) {
@@ -686,4 +779,67 @@ fun TerminalScreen(
             shape = RoundedCornerShape(14.dp)
         )
     }
+
+    // AI Helper Dialog
+    if (showAiHelper) {
+        var aiResponse by remember { mutableStateOf("Analyzing terminal output...") }
+        
+        LaunchedEffect(terminalOutput) {
+            aiResponse = "Analyzing terminal output..."
+            aiResponse = com.example.verb.terminal.TerminalAiHelper.analyzeTerminalOutput(terminalOutput)
+        }
+        
+        AlertDialog(
+            onDismissRequest = { showAiHelper = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "AI Terminal Assistant",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .background(Color(0xFF090A0E), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = aiResponse,
+                            fontSize = 13.sp,
+                            color = Color(0xFFE2E8F0),
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAiHelper = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Got it", fontSize = 12.sp, color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF161820),
+            titleContentColor = Color.White,
+            shape = RoundedCornerShape(14.dp)
+        )
+    }
+}
 }

@@ -243,7 +243,7 @@ fun SystemScreen(
                                 )
                             }
                             Text(
-                                text = entry.summary,
+                                text = entry.summary ?: "",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 2.dp)

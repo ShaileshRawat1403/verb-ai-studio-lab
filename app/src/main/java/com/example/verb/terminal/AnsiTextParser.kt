@@ -110,6 +110,35 @@ object AnsiTextParser {
         }
     }
 
+    fun applyBasicSyntaxHighlighting(annotatedString: AnnotatedString, isDark: Boolean): AnnotatedString {
+        val text = annotatedString.text
+        val builder = AnnotatedString.Builder(annotatedString)
+
+        val errorColor = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626) // Red
+        val successColor = if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A) // Green
+        val pathColor = if (isDark) Color(0xFF60A5FA) else Color(0xFF2563EB) // Blue
+
+        // Error regex: matches "error:", "fatal:", "failed", etc.
+        val errorRegex = Regex("(?i)\\b(error|fatal|exception|failed|failure|command not found)\\b.*")
+        errorRegex.findAll(text).forEach { matchResult ->
+            builder.addStyle(SpanStyle(color = errorColor, fontWeight = FontWeight.Bold), matchResult.range.first, matchResult.range.last + 1)
+        }
+
+        // Success regex: matches "success", "OK", "done"
+        val successRegex = Regex("(?i)\\b(success|successfully|ok|done|completed)\\b")
+        successRegex.findAll(text).forEach { matchResult ->
+            builder.addStyle(SpanStyle(color = successColor, fontWeight = FontWeight.Bold), matchResult.range.first, matchResult.range.last + 1)
+        }
+
+        // Path regex: matches /path/to/file or ./path or ~/path
+        val pathRegex = Regex("(?<=^|\\s)(/[a-zA-Z0-9_.-]+)+|(\\./[a-zA-Z0-9_.-]+)+|~(/[a-zA-Z0-9_.-]+)*")
+        pathRegex.findAll(text).forEach { matchResult ->
+            builder.addStyle(SpanStyle(color = pathColor, textDecoration = TextDecoration.Underline), matchResult.range.first, matchResult.range.last + 1)
+        }
+        
+        return builder.toAnnotatedString()
+    }
+
     private fun applyAnsiSequence(
         seq: String,
         current: TextStyleState,
