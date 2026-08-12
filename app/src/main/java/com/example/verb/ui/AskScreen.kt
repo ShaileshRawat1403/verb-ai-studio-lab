@@ -561,6 +561,8 @@ fun ActionResultCard(
     onOpenTerminal: () -> Unit,
     onInspectText: (String) -> Unit
 ) {
+    var showEvidence by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -613,19 +615,80 @@ fun ActionResultCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (result.observedOutput != null && result.observedOutput.isNotBlank()) {
+            // Derived Data key-value pairs
+            if (!result.derivedData.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    SelectionContainer {
+                Text(
+                    text = "Derived",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                result.derivedData.forEach { (k, v) ->
+                    Row(
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(text = k, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(text = v, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // Evidence section toggle (Observed Output + Explanation)
+            val hasEvidence = (!result.observedOutput.isNullOrBlank()) || (!result.explanation.isNullOrBlank())
+            if (hasEvidence) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (showEvidence) "Hide Evidence" else "Show Evidence",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable { showEvidence = !showEvidence }
+                        .padding(vertical = 4.dp)
+                )
+
+                if (showEvidence) {
+                    if (!result.observedOutput.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = result.observedOutput,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(8.dp),
+                            text = "Observed",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = result.observedOutput,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(8.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    if (!result.explanation.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Explanation",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = result.explanation,
+                            fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
