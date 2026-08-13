@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.verb.terminal.TerminalSessionState
 import androidx.compose.material3.Icon
@@ -93,6 +94,7 @@ fun TerminalScreen(
     onSubmitIntent: (VerbIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showSettingsSheet by remember { mutableStateOf(false) }
     var showNaturalLanguageSheet by remember { mutableStateOf(false) }
     var showDiagnosticsSheet by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
@@ -344,6 +346,17 @@ fun TerminalScreen(
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = "AI Help",
                                 tint = Color(0xFF10B981),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = { showSettingsSheet = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF475569),
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -711,6 +724,9 @@ fun TerminalScreen(
     }
 
     // Natural Language Sheet Modal
+    if (showSettingsSheet) {
+        TerminalSettingsSheet(onDismiss = { showSettingsSheet = false })
+    }
     if (showNaturalLanguageSheet) {
         VerbNaturalLanguageSheet(
             onDismiss = { showNaturalLanguageSheet = false },
