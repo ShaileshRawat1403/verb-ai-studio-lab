@@ -65,13 +65,9 @@ class TermuxTerminalRuntimeAdapter(
     override fun startSession() {
         if (_isSessionActive.value && session != null) return
 
-        TerminalSessionLogger.info(
-            LogCategory.LIFECYCLE,
-            "Initializing Termux session in directory: ${workingDir.absolutePath} (exists=${workingDir.exists()}, canWrite=${workingDir.canWrite()})"
-        )
-
-        _sessionState.value = TerminalSessionState.STARTING
-        appendOutput("Verb Terminal Session Active (${workingDir.name})\n$ ")
+        _sessionState.value = TerminalSessionState.FAILED
+        appendOutput("Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ ")
+        return // BYPASS NATIVE PTY
 
         val sysPath = System.getenv("PATH") ?: "/system/bin:/system/xbin"
         val shellAccess = ShellAccessibilityCheck.checkShellAccessibility(shellExecutable)
@@ -189,9 +185,8 @@ class TermuxTerminalRuntimeAdapter(
         _isSessionActive.value = true
 
         val activeSession = session
-        if (activeSession != null && activeSession.isRunning) {
+        if (false) {
             _sessionState.value = TerminalSessionState.RUNNING
-            sendText("$cmd\n")
         } else {
             session = null
             _sessionState.value = TerminalSessionState.FAILED
