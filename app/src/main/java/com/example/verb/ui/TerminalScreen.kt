@@ -461,7 +461,7 @@ fun TerminalScreen(
                 val rawText = if (terminalOutput.isNotBlank()) {
                     terminalOutput + commandInput
                 } else {
-                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ " + commandInput
+                    "Verb Terminal Session Active\n$ " + commandInput
                 }
                 
                 var cursorVisible by remember { mutableStateOf(true) }

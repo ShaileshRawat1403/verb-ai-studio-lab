@@ -15,6 +15,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+
 
 /**
  * Production Termux Terminal Adapter implementing [TerminalRuntimeAdapter].
@@ -65,9 +70,13 @@ class TermuxTerminalRuntimeAdapter(
     override fun startSession() {
         if (_isSessionActive.value && session != null) return
 
-        _sessionState.value = TerminalSessionState.FAILED
-        appendOutput("Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ ")
-        return // BYPASS NATIVE PTY
+        TerminalSessionLogger.info(
+            LogCategory.LIFECYCLE,
+            "Initializing Termux session in directory: ${workingDir.absolutePath} (exists=${workingDir.exists()}, canWrite=${workingDir.canWrite()})"
+        )
+
+        _sessionState.value = TerminalSessionState.STARTING
+        appendOutput("Verb Terminal Session Active (${workingDir.name})\n$ ")
 
         val sysPath = System.getenv("PATH") ?: "/system/bin:/system/xbin"
         val shellAccess = ShellAccessibilityCheck.checkShellAccessibility(shellExecutable)
@@ -182,11 +191,46 @@ class TermuxTerminalRuntimeAdapter(
             return
         }
 
+        if (trimmed.startsWith("claude ") || trimmed.startsWith("gemini ") || trimmed.startsWith("ai ") || trimmed.startsWith("codex ")) {
+            _isSessionActive.value = true
+            appendOutput("$cmd\n")
+            val prompt = trimmed.substringAfter(" ")
+            
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val apiKey = com.example.BuildConfig.GEMINI_API_KEY.trim('"', ' ')
+                    if (apiKey.isEmpty()) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            appendOutput("Error: GEMINI_API_KEY is missing. Please set it in the AI Studio Secrets panel.\n$ ")
+                        }
+                        return@launch
+                    }
+                    val model = com.google.ai.client.generativeai.GenerativeModel(
+                        modelName = "gemini-3.5-flash",
+                        apiKey = apiKey
+                    )
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput("[Thinking...]\n")
+                    }
+                    val response = model.generateContent(prompt)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput(response.text + "\n$ ")
+                    }
+                } catch (e: Exception) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput("AI Error: ${e.message}\n$ ")
+                    }
+                }
+            }
+            return
+        }
+
         _isSessionActive.value = true
 
         val activeSession = session
-        if (false) {
+        if (activeSession != null && activeSession.isRunning) {
             _sessionState.value = TerminalSessionState.RUNNING
+            sendText("$cmd\n")
         } else {
             session = null
             _sessionState.value = TerminalSessionState.FAILED
