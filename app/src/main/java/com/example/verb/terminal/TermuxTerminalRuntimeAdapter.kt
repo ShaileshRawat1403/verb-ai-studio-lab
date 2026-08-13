@@ -14,6 +14,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import org.json.JSONArray
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -188,6 +195,66 @@ class TermuxTerminalRuntimeAdapter(
         val trimmed = cmd.trim()
         if (trimmed == "clear") {
             clearBuffer()
+            return
+        }
+
+        if (trimmed.startsWith("openai ") || trimmed.startsWith("chatgpt ")) {
+            _isSessionActive.value = true
+            appendOutput("$cmd\n")
+            val prompt = trimmed.substringAfter(" ")
+            
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val apiKey = com.example.BuildConfig.OPENAI_API_KEY.trim('"', ' ')
+                    if (apiKey.isEmpty()) {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            appendOutput("Error: OPENAI_API_KEY is missing. Please set it in the AI Studio Secrets panel.\n$ ")
+                        }
+                        return@launch
+                    }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput("[Thinking (OpenAI)...]\n")
+                    }
+                    
+                    val client = OkHttpClient()
+                    val json = JSONObject()
+                    json.put("model", "gpt-4o") // Assuming gpt-4o as a solid default
+                    
+                    val message = JSONObject()
+                    message.put("role", "user")
+                    message.put("content", prompt)
+                    
+                    val messages = JSONArray()
+                    messages.put(message)
+                    json.put("messages", messages)
+                    
+                    val body = json.toString().toRequestBody("application/json".toMediaType())
+                    val request = Request.Builder()
+                        .url("https://api.openai.com/v1/chat/completions")
+                        .addHeader("Authorization", "Bearer $apiKey")
+                        .post(body)
+                        .build()
+                        
+                    val response = client.newCall(request).execute()
+                    val responseBody = response.body?.string() ?: ""
+                    
+                    if (response.isSuccessful) {
+                        val responseJson = JSONObject(responseBody)
+                        val text = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            appendOutput(text + "\n$ ")
+                        }
+                    } else {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            appendOutput("OpenAI API Error: ${response.code} $responseBody\n$ ")
+                        }
+                    }
+                } catch (e: Exception) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput("OpenAI Error: ${e.message}\n$ ")
+                    }
+                }
+            }
             return
         }
 

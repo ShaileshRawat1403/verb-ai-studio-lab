@@ -15,6 +15,7 @@ android {
 
   defaultConfig {
     buildConfigField("String", "GEMINI_API_KEY", "\"\\\"\\\"\"")
+    buildConfigField("String", "OPENAI_API_KEY", "\"\\\"\\\"\"")
     applicationId = "com.aistudio.verb.app"
     minSdk = 24
     targetSdk = 36
