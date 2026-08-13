@@ -77,4 +77,18 @@ class TermuxTerminalRuntimeAdapterTest {
         val sysPath = System.getenv("PATH") ?: "/system/bin:/system/xbin"
         assertFalse("PATH should not contain termux userland", sysPath.contains("/data/data/com.termux/files/usr/bin"))
     }
+
+    @Test
+    fun `sendCommand processes clear command correctly`() {
+        adapter.sendCommand("clear")
+        assertEquals("$ ", adapter.terminalOutput.value)
+    }
+
+    @Test
+    fun `sendCommand processes cd command and updates working directory`() {
+        val childDir = File(workingDir, "test_dir")
+        childDir.mkdirs()
+        adapter.sendCommand("cd test_dir")
+        assertEquals(childDir.absolutePath, adapter.currentWorkingDirectory())
+    }
 }

@@ -31,7 +31,7 @@ abstract class VerbDatabase : RoomDatabase() {
                     VerbDatabase::class.java,
                     "verb_database"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(true)
                 .build()
                 INSTANCE = instance
                 instance

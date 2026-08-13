@@ -53,6 +53,7 @@ fun FileExplorerDrawer(
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
+                            @Suppress("DEPRECATION")
                             Icons.Default.ArrowBack, 
                             contentDescription = "Up",
                             tint = if (isDark) Color.White else Color.Black
@@ -69,7 +70,7 @@ fun FileExplorerDrawer(
             }
         }
         
-        Divider(color = if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC))
+        HorizontalDivider(color = if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC))
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(files) { file ->

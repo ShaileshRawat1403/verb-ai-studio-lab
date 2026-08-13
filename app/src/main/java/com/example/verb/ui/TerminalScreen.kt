@@ -441,13 +441,12 @@ fun TerminalScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
                 .padding(14.dp)
-                .verticalScroll(scrollState)
         ) {
-            val termuxAdapter = null // (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
+            val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
                 ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
-            val hasNativePty = termuxAdapter?.hasNativeSession == true
+            val hasNativePty = termuxAdapter != null && sessionState == com.example.verb.terminal.TerminalSessionState.RUNNING
 
-            if (hasNativePty && termuxAdapter?.terminalView != null) {
+            if (hasNativePty) {
                 AndroidView(
                     factory = { ctx ->
                         termuxAdapter.terminalView ?: TerminalView(ctx, null).also {
@@ -484,7 +483,7 @@ fun TerminalScreen(
                 var showContextMenu by remember { mutableStateOf(false) }
                 val clipboardManager = LocalClipboardManager.current
 
-                Box(modifier = Modifier.pointerInput(Unit) {
+                Box(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).pointerInput(Unit) {
                     detectTapGestures(onLongPress = { showContextMenu = true })
                 }) {
                     SelectionContainer {

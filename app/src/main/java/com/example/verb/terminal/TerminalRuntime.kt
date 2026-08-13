@@ -13,10 +13,10 @@ class TerminalRuntime(
     useFakeForTesting: Boolean = false
 ) : TerminalRuntimeAdapter {
 
-    private val delegate: TerminalRuntimeAdapter = ProcessBuilderTerminalRuntimeAdapter(workingDir)
+    private val delegate: TerminalRuntimeAdapter = if (useFakeForTesting) com.example.verb.terminal.FakeTerminalRuntimeAdapter(workingDir) else com.example.verb.terminal.TermuxTerminalRuntimeAdapter(workingDir)
 
     val delegateAdapter: TerminalRuntimeAdapter get() = delegate
-    // val unwrapTermuxAdapter: TermuxTerminalRuntimeAdapter? get() = delegate as? TermuxTerminalRuntimeAdapter
+    val unwrapTermuxAdapter: TermuxTerminalRuntimeAdapter? get() = delegate as? TermuxTerminalRuntimeAdapter
 
     override val sessionState: StateFlow<TerminalSessionState> get() = delegate.sessionState
     override val terminalOutput: StateFlow<String> get() = delegate.terminalOutput

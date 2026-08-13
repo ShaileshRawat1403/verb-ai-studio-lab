@@ -349,12 +349,10 @@ object TerminalCommandEngine {
     private fun handleGitCommand(args: List<String>, currentDir: File): String {
         val subCmd = args.firstOrNull() ?: ""
         val gitDir = File(currentDir, ".git")
-        if (!gitDir.exists()) {
-            gitDir.mkdirs()
-        }
 
         return when (subCmd) {
             "", "status" -> {
+                if (!gitDir.exists()) return "fatal: not a git repository (or any of the parent directories): .git\n"
                 "On branch main\nYour branch is up to date with 'origin/main'.\n\nnothing to commit, working tree clean\n"
             }
             "--version", "-v", "version" -> "git version 2.43.0\n"

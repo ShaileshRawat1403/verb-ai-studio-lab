@@ -14,6 +14,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
+    buildConfigField("String", "GEMINI_API_KEY", "\"\\\"\\\"\"")
     applicationId = "com.aistudio.verb.app"
     minSdk = 24
     targetSdk = 36
@@ -21,7 +22,7 @@ android {
     versionName = "1.0"
 
     ndk {
-      abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
+      abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86_64"))
     }
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -86,6 +87,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)

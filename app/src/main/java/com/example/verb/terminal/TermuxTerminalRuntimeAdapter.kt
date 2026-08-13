@@ -194,7 +194,7 @@ class TermuxTerminalRuntimeAdapter(
             sendText("$cmd\n")
         } else {
             session = null
-            _sessionState.value = TerminalSessionState.RUNNING
+            _sessionState.value = TerminalSessionState.FAILED
             appendOutput("$cmd\n")
             val res = TerminalCommandEngine.executeCommand(cmd, activeWorkingDir)
             if (res.shouldClearBuffer) {
