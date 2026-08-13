@@ -44,7 +44,7 @@ class VerbViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val terminalViewModel = TerminalViewModel(application)
-    val terminalRuntime get() = terminalViewModel.terminalRuntime
+    
 
     private val _activeTab = MutableStateFlow(VerbTab.ASK)
     val activeTab: StateFlow<VerbTab> = _activeTab.asStateFlow()
@@ -111,7 +111,7 @@ class VerbViewModel(application: Application) : AndroidViewModel(application) {
         if (command.isBlank()) return
         terminalViewModel.executeCommand(command)
 
-        val activeTermOutput = terminalRuntime.terminalOutput.value.takeLast(400)
+        val activeTermOutput = terminalViewModel.terminalOutput.value.takeLast(400)
         val userMsg = ChatMessage(
             sender = ChatSender.USER,
             text = "Execute command in terminal: `$command`"
@@ -167,7 +167,7 @@ class VerbViewModel(application: Application) : AndroidViewModel(application) {
         _isExecuting.value = true
         _queryInput.value = ""
 
-        val currentTerminalContext = terminalRuntime.terminalOutput.value.takeLast(600)
+        val currentTerminalContext = terminalViewModel.terminalOutput.value.takeLast(600)
 
         // 1. Append User Message
         val userMsg = ChatMessage(
@@ -361,7 +361,7 @@ class VerbViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        terminalRuntime.destroy()
+        
     }
 }
 

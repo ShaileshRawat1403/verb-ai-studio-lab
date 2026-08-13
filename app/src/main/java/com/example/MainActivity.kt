@@ -70,8 +70,8 @@ fun VerbAppContent(viewModel: VerbViewModel) {
     val commandHistory by viewModel.roomCommandHistory.collectAsStateWithLifecycle()
     val terminalOutputs by viewModel.roomTerminalOutputs.collectAsStateWithLifecycle()
 
-    val terminalOutput by viewModel.terminalRuntime.terminalOutput.collectAsStateWithLifecycle()
-    val isSessionActive by viewModel.terminalRuntime.isSessionActive.collectAsStateWithLifecycle()
+    val terminalOutput by viewModel.terminalViewModel.terminalOutput.collectAsStateWithLifecycle()
+    val isSessionActive = true
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -139,7 +139,7 @@ fun VerbAppContent(viewModel: VerbViewModel) {
 
                 VerbTab.TERMINAL -> TerminalScreen(
                     terminalOutput = terminalOutput,
-                    terminalRuntime = viewModel.terminalRuntime,
+                    terminalRuntime = null,
                     terminalViewModel = viewModel.terminalViewModel,
                     onSendCommand = viewModel.terminalViewModel::executeCommand,
                     onSendKey = viewModel.terminalViewModel::sendControlKey,

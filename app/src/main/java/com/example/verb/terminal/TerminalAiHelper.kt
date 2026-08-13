@@ -5,22 +5,26 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.content.Context
 
 object TerminalAiHelper {
-    private val model by lazy {
-        GenerativeModel(
-            modelName = "gemini-1.5-flash",
-            apiKey = BuildConfig.GEMINI_API_KEY
-        )
-    }
 
-    suspend fun analyzeTerminalOutput(output: String): String {
+
+    suspend fun analyzeTerminalOutput(context: Context, output: String): String {
         return withContext(Dispatchers.IO) {
-            if (BuildConfig.GEMINI_API_KEY.isEmpty()) {
-                return@withContext "AI Assistance is unavailable because the GEMINI_API_KEY is not set in the Secrets panel."
-            }
+            val prefs = context.getSharedPreferences("TerminalSettings", Context.MODE_PRIVATE)
+            val geminiKey = prefs.getString("GEMINI_API_KEY", "") ?: ""
 
-            val prompt = """
+            if (geminiKey.isEmpty() || !geminiKey.startsWith("AIzaSy")) {
+                return@withContext "AI Assistance is unavailable. Please set a valid Gemini API Key (starting with 'AIzaSy') in the Terminal Settings."
+            }
+            
+            val model = GenerativeModel(
+                modelName = "gemini-1.5-flash",
+                apiKey = geminiKey
+            )
+
+            val prompt =  """
                 You are a senior Linux and Android sysadmin assistant. The user is using a local Android native terminal (sh) and needs help understanding the recent terminal output.
                 
                 Please interpret the following terminal buffer. Keep your answer brief, highlight any obvious errors, and provide 1-2 actionable suggestions or commands they should try next.

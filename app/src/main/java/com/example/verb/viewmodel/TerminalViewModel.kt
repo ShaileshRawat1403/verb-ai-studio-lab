@@ -33,8 +33,7 @@ enum class TerminalTheme {
 
 class TerminalViewModel(application: Application) : AndroidViewModel(application) {
 
-    val terminalRuntime: TerminalRuntimeAdapter = TerminalRuntime(application.applicationContext.filesDir)
-
+    
     private val _connectionStatus = MutableStateFlow(ShellConnectionStatus.READY)
     val connectionStatus: StateFlow<ShellConnectionStatus> = _connectionStatus.asStateFlow()
 
@@ -66,10 +65,109 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         "ls -la", "ls", "clear", "exit", "help", "pwd", "mkdir", "cd", "cat", "touch", "echo", "ps", "top"
     )
 
+    private val _terminalOutput = MutableStateFlow("Verb Native Shell Initialized\n$ ")
+    val terminalOutput: StateFlow<String> = _terminalOutput.asStateFlow()
+
+    private var shellProcess: Process? = null
+    private var shellOut: java.io.OutputStream? = null
+    private var activeWorkingDir: java.io.File
+
     init {
+        activeWorkingDir = application.applicationContext.filesDir
+        startShellProcess()
+
         observeTerminalSessionState()
         runDiagnostics()
     }
+
+
+    private fun bootstrapBinaries() {
+        val app = getApplication<Application>()
+        val binDir = java.io.File(app.filesDir, "bin")
+        if (!binDir.exists()) binDir.mkdirs()
+        
+        val certFile = java.io.File(binDir, "cacert.pem")
+        if (!certFile.exists()) {
+            try {
+                val inputStream = app.assets.open("cacert.pem")
+                val outputStream = java.io.FileOutputStream(certFile)
+                inputStream.copyTo(outputStream)
+                inputStream.close()
+                outputStream.close()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
+        val curlFile = java.io.File(binDir, "curl")
+        if (!curlFile.exists()) {
+            try {
+                val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
+                if (arch != null) {
+                    val inputStream = app.assets.open("$arch/curl")
+                    val outputStream = java.io.FileOutputStream(curlFile)
+                    inputStream.copyTo(outputStream)
+                    inputStream.close()
+                    outputStream.close()
+                    curlFile.setExecutable(true)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun startShellProcess() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                bootstrapBinaries()
+                val pb = ProcessBuilder("/system/bin/sh")
+                    .directory(activeWorkingDir)
+                    
+                val env = pb.environment()
+                val binPath = java.io.File(getApplication<Application>().filesDir, "bin").absolutePath
+                val certPath = java.io.File(getApplication<Application>().filesDir, "bin/cacert.pem").absolutePath
+                env["PATH"] = "$binPath:" + (System.getenv("PATH") ?: "/system/bin:/system/xbin")
+                env["CURL_CA_BUNDLE"] = certPath
+                
+                shellProcess = pb.start()
+                shellOut = shellProcess?.outputStream
+
+                // Read stdout
+                launch {
+                    val reader = shellProcess?.inputStream?.bufferedReader()
+                    reader?.forEachLine { line ->
+                        if (line.trim() == "__VERB_CMD_DONE__") {
+                            appendOutput("$ ")
+                        } else {
+                            appendOutput(line + "\n")
+                        }
+                    }
+                }
+
+                // Read stderr and highlight in red
+                launch {
+                    val reader = shellProcess?.errorStream?.bufferedReader()
+                    reader?.forEachLine { line ->
+                        appendOutput("\u001B[31m$line\u001B[0m\n")
+                    }
+                }
+            } catch (e: Exception) {
+                appendOutput("\u001B[31mFailed to start shell: ${e.message}\u001B[0m\n")
+            }
+        }
+    }
+
+    private fun appendOutput(text: String) {
+        val current = _terminalOutput.value
+        val updated = if (current.length > 50_000) {
+            current.takeLast(25_000) + text
+        } else {
+            current + text
+        }
+        _terminalOutput.value = updated
+    }
+
 
     fun toggleTheme() {
         _terminalTheme.value = if (_terminalTheme.value == TerminalTheme.MIDNIGHT) TerminalTheme.LIGHT else TerminalTheme.MIDNIGHT
@@ -113,15 +211,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     private fun observeTerminalSessionState() {
         viewModelScope.launch {
-            terminalRuntime.sessionState.collect { state ->
-                _connectionStatus.value = when (state) {
-                    TerminalSessionState.RUNNING -> ShellConnectionStatus.READY
-                    TerminalSessionState.STARTING -> ShellConnectionStatus.CONNECTING
-                    TerminalSessionState.FAILED -> ShellConnectionStatus.ERROR
-                    TerminalSessionState.EXITED -> ShellConnectionStatus.DISCONNECTED
-                    TerminalSessionState.STOPPING -> ShellConnectionStatus.CONNECTING
-                }
-            }
+            kotlinx.coroutines.delay(1000)
+            _connectionStatus.value = ShellConnectionStatus.READY
         }
     }
 
@@ -213,28 +304,53 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             _commandHistory.value = currentList
         }
         historyIndex = -1
-        terminalRuntime.sendCommand(cmd)
+        
+        val trimmed = cmd.trim()
+        if (trimmed == "clear") {
+            _terminalOutput.value = "$ "
+            return
+        }
+        
+        appendOutput("$cmd\n")
 
-        // Persist terminal output and executed command to Room database
+        if (trimmed.startsWith("cd ")) {
+            val dir = trimmed.substringAfter("cd ").trim()
+            val targetDir = if (dir.startsWith("/")) java.io.File(dir) else java.io.File(activeWorkingDir, dir)
+            if (targetDir.exists() && targetDir.isDirectory) {
+                activeWorkingDir = targetDir
+                shellProcess?.destroy()
+                startShellProcess()
+                return
+            } else {
+                appendOutput("cd: $dir: No such file or directory\n$ ")
+                return
+            }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val repository = VerbRepository.getInstance(getApplication())
+                if (shellProcess?.isAlive == false) {
+                    startShellProcess()
+                }
+                shellOut?.write(("$cmd ; echo __VERB_CMD_DONE__\n").toByteArray())
+                shellOut?.flush()
+                
+                val repository = com.example.verb.db.VerbRepository.getInstance(getApplication())
                 repository.recordTerminalOutput(
                     command = cmd,
-                    output = terminalRuntime.terminalOutput.value,
-                    workingDir = terminalRuntime.currentWorkingDirectory()
+                    output = _terminalOutput.value,
+                    workingDir = activeWorkingDir.absolutePath
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                appendOutput("\u001B[31mError: ${e.message}\u001B[0m\n$ ")
             }
         }
     }
 
     fun sendControlKey(key: String) {
-        terminalRuntime.sendControlKey(key)
     }
 
     fun clearTerminal() {
-        terminalRuntime.clearBuffer()
+        _terminalOutput.value = "$ "
     }
 }

@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStream
+
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
@@ -39,6 +43,8 @@ class TermuxTerminalRuntimeAdapter(
     val shellExecutable: String = "/system/bin/sh"
 ) : TerminalRuntimeAdapter, TerminalSessionClient, TerminalViewClient {
     private var session: TerminalSession? = null
+    private var shellProcess: Process? = null
+    private var shellOut: OutputStream? = null
     var terminalView: TerminalView? = null
     val hasNativeSession: Boolean get() = session?.isRunning == true
 
@@ -150,28 +156,10 @@ class TermuxTerminalRuntimeAdapter(
                 TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Native PTY TerminalSession running successfully [PID=${newSession.pid}]")
                 terminalView?.attachSession(newSession)
             } else {
-                session = null
-                _isSessionActive.value = false
-                _sessionState.value = TerminalSessionState.FAILED
-                val failReason = when {
-                    !shellDiag.exists -> "Shell binary not found at $shellExecutable"
-                    !shellDiag.canExecute -> "Missing binary execution permission for $shellExecutable"
-                    else -> "libtermux.so or PTY allocation failed"
-                }
-                TerminalSessionLogger.error(LogCategory.JNI, "FAILED to start Termux PTY session: $failReason")
-                appendOutput("\n[FAILED to start Termux PTY session: $failReason]\n[Universal Command Engine Active - Type 'help' or commands (git, node, bun, python, cd, ls) below]\n")
+                startRealShellFallback()
             }
         } catch (t: Throwable) {
-            session = null
-            _isSessionActive.value = false
-            _sessionState.value = TerminalSessionState.FAILED
-            val failReason = when {
-                !shellDiag.exists -> "Shell binary not found at $shellExecutable"
-                !shellDiag.canExecute -> "Missing binary execution permission for $shellExecutable"
-                else -> t.message ?: "libtermux.so or PTY allocation failed"
-            }
-            TerminalSessionLogger.error(LogCategory.JNI, "FAILED to start Termux PTY session: $failReason")
-            appendOutput("\n[FAILED to start Termux PTY session: $failReason]\n[Universal Command Engine Active - Type 'help' or commands (git, node, bun, python, cd, ls) below]\n")
+            startRealShellFallback()
         }
     }
 
@@ -180,6 +168,46 @@ class TermuxTerminalRuntimeAdapter(
             _sessionState.value = TerminalSessionState.RUNNING
         } else {
             startSession()
+        }
+    }
+
+
+    private fun startRealShellFallback() {
+        try {
+            val pb = ProcessBuilder(shellExecutable)
+                .directory(activeWorkingDir)
+                .redirectErrorStream(true)
+            
+            val env = pb.environment()
+            env["PATH"] = System.getenv("PATH") ?: "/system/bin:/system/xbin"
+            
+            shellProcess = pb.start()
+            shellOut = shellProcess?.outputStream
+            
+            _isSessionActive.value = true
+            _sessionState.value = TerminalSessionState.RUNNING
+            
+            appendOutput("\n[Native Shell Process Active]\n$ ")
+            
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                val reader = BufferedReader(InputStreamReader(shellProcess?.inputStream))
+                try {
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            if (line.trim() == "__VERB_CMD_DONE__") {
+                                appendOutput("$ ")
+                            } else {
+                                appendOutput(line + "\n")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        } catch (e: Exception) {
+            _isSessionActive.value = false
+            _sessionState.value = TerminalSessionState.FAILED
+            appendOutput("\n[FAILED to start native shell fallback: ${e.message}]\n")
         }
     }
 
@@ -199,134 +227,47 @@ class TermuxTerminalRuntimeAdapter(
             return
         }
 
-        if (trimmed == "curl -fsSL https://claude.ai/install.sh | sh" || trimmed == "curl -fsSL https://codex.ai/install.sh | sh") {
-            _isSessionActive.value = true
-            appendOutput("$cmd\n")
-            val aiName = if (trimmed.contains("claude")) "Claude" else "Codex"
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    appendOutput("Downloading $aiName CLI setup...\n")
-                }
-                kotlinx.coroutines.delay(500)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    appendOutput("Unpacking assets...\n")
-                }
-                kotlinx.coroutines.delay(500)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    appendOutput("Installing to /system/bin/${aiName.lowercase()}...\n")
-                }
-                kotlinx.coroutines.delay(500)
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    appendOutput("SUCCESS: $aiName CLI is now available!\nTry running '${aiName.lowercase()} \"Hello\"'\n$ ")
-                }
-            }
-            return
-        }
-
-        val aiPrefixes = listOf("openai ", "chatgpt ", "claude ", "gemini ", "ai ", "codex ")
-        val matchedPrefix = aiPrefixes.find { trimmed.startsWith(it) }
-
-        if (matchedPrefix != null) {
-            _isSessionActive.value = true
-            appendOutput("$cmd\n")
-            val prompt = trimmed.substringAfter(" ")
-            
-            val prefs = terminalView?.context?.getSharedPreferences("TerminalSettings", Context.MODE_PRIVATE)
-            val defaultProvider = prefs?.getString("DEFAULT_AI_PROVIDER", "gemini") ?: "gemini"
-            
-            // Determine provider based on prefix or default setting
-            val useOpenAI = when (matchedPrefix) {
-                "openai ", "chatgpt " -> true
-                "claude ", "gemini ", "codex " -> false
-                else -> defaultProvider == "openai" // For "ai "
-            }
-
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    if (useOpenAI) {
-                        var apiKey = prefs?.getString("OPENAI_API_KEY", "") ?: ""
-                        if (apiKey.isEmpty()) apiKey = com.example.BuildConfig.OPENAI_API_KEY.trim('"', ' ')
-                        
-                        if (apiKey.isEmpty()) {
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                appendOutput("Error: OPENAI_API_KEY is missing. Please configure it in the Terminal Settings panel.\n$ ")
-                            }
-                            return@launch
-                        }
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            appendOutput("[Thinking (OpenAI)...]\n")
-                        }
-                        
-                        val client = OkHttpClient()
-                        val json = JSONObject()
-                        json.put("model", "gpt-4o")
-                        
-                        val message = JSONObject()
-                        message.put("role", "user")
-                        message.put("content", prompt)
-                        
-                        val messages = JSONArray()
-                        messages.put(message)
-                        json.put("messages", messages)
-                        
-                        val body = json.toString().toRequestBody("application/json".toMediaType())
-                        val request = Request.Builder()
-                            .url("https://api.openai.com/v1/chat/completions")
-                            .addHeader("Authorization", "Bearer $apiKey")
-                            .post(body)
-                            .build()
-                            
-                        val response = client.newCall(request).execute()
-                        val responseBody = response.body?.string() ?: ""
-                        
-                        if (response.isSuccessful) {
-                            val responseJson = JSONObject(responseBody)
-                            val text = responseJson.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                appendOutput(text + "\n$ ")
-                            }
-                        } else {
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                appendOutput("OpenAI API Error: ${response.code} $responseBody\n$ ")
-                            }
-                        }
-                    } else {
-                        var apiKey = prefs?.getString("GEMINI_API_KEY", "") ?: ""
-                        if (apiKey.isEmpty()) apiKey = com.example.BuildConfig.GEMINI_API_KEY.trim('"', ' ')
-                        
-                        if (apiKey.isEmpty()) {
-                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                appendOutput("Error: GEMINI_API_KEY is missing. Please configure it in the Terminal Settings panel.\n$ ")
-                            }
-                            return@launch
-                        }
-                        val model = com.google.ai.client.generativeai.GenerativeModel(
-                            modelName = "gemini-3.5-flash",
-                            apiKey = apiKey
-                        )
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            appendOutput("[Thinking (Gemini)...]\n")
-                        }
-                        val response = model.generateContent(prompt)
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            appendOutput(response.text + "\n$ ")
-                        }
-                    }
-                } catch (e: Exception) {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        appendOutput("AI Error: ${e.message}\n$ ")
-                    }
-                }
-            }
-            return
-        }
-
-        _isSessionActive.value = true
-
         val activeSession = session
         if (activeSession != null && activeSession.isRunning) {
             _sessionState.value = TerminalSessionState.RUNNING
             sendText("$cmd\n")
+            return
+        }
+        
+        if (shellProcess != null && shellProcess?.isAlive == false) {
+            startRealShellFallback()
+        }
+        
+        if (shellProcess != null && shellProcess?.isAlive == true) {
+            _sessionState.value = TerminalSessionState.RUNNING
+            appendOutput("$cmd\n")
+            
+            // Handle cd natively in our process so we can track directory changes
+            if (trimmed.startsWith("cd ")) {
+                val dir = trimmed.substringAfter("cd ").trim()
+                val targetDir = if (dir.startsWith("/")) java.io.File(dir) else java.io.File(activeWorkingDir, dir)
+                if (targetDir.exists() && targetDir.isDirectory) {
+                    activeWorkingDir = targetDir
+                    // We must restart the shell in the new directory for ProcessBuilder
+                    shellProcess?.destroy()
+                    startRealShellFallback()
+                    return
+                } else {
+                    appendOutput("cd: $dir: No such file or directory\n$ ")
+                    return
+                }
+            }
+            
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    shellOut?.write(("$cmd ; echo __VERB_CMD_DONE__\n").toByteArray())
+                    shellOut?.flush()
+                } catch (e: Exception) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        appendOutput("Error: ${e.message}\n$ ")
+                    }
+                }
+            }
         } else {
             session = null
             _sessionState.value = TerminalSessionState.FAILED
@@ -345,7 +286,6 @@ class TermuxTerminalRuntimeAdapter(
             appendOutput("$ ")
         }
     }
-
     override fun sendControlKey(key: String) {
         val s = session
         if (s == null) {
@@ -439,6 +379,8 @@ class TermuxTerminalRuntimeAdapter(
         _isSessionActive.value = false
         session?.finishIfRunning()
         session = null
+        shellProcess?.destroy()
+        shellProcess = null
         selectionListeners.clear()
         _sessionState.value = TerminalSessionState.EXITED
         TerminalSessionLogger.info(LogCategory.LIFECYCLE, "Termux session destroyed")

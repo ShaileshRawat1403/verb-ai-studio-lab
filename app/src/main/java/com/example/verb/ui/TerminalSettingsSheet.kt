@@ -17,9 +17,33 @@ fun TerminalSettingsSheet(
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("TerminalSettings", Context.MODE_PRIVATE) }
     
+
     var geminiKey by remember { mutableStateOf(sharedPrefs.getString("GEMINI_API_KEY", "") ?: "") }
     var openAiKey by remember { mutableStateOf(sharedPrefs.getString("OPENAI_API_KEY", "") ?: "") }
     var defaultAiProvider by remember { mutableStateOf(sharedPrefs.getString("DEFAULT_AI_PROVIDER", "gemini") ?: "gemini") }
+
+    var geminiError by remember { mutableStateOf(false) }
+    var openAiError by remember { mutableStateOf(false) }
+
+    fun validateKeys(): Boolean {
+        var isValid = true
+        if (geminiKey.isNotBlank() && !geminiKey.startsWith("AIzaSy")) {
+            geminiError = true
+            isValid = false
+        } else {
+            geminiError = false
+        }
+        
+        if (openAiKey.isNotBlank() && !openAiKey.startsWith("sk-")) {
+            openAiError = true
+            isValid = false
+        } else {
+            openAiError = false
+        }
+        return isValid
+    }
+
+
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -63,14 +87,16 @@ fun TerminalSettingsSheet(
                 singleLine = true
             )
             
-            Button(
+                        Button(
                 onClick = {
-                    sharedPrefs.edit()
-                        .putString("GEMINI_API_KEY", geminiKey)
-                        .putString("OPENAI_API_KEY", openAiKey)
-                        .putString("DEFAULT_AI_PROVIDER", defaultAiProvider)
-                        .apply()
-                    onDismiss()
+                    if (validateKeys()) {
+                        sharedPrefs.edit()
+                            .putString("GEMINI_API_KEY", geminiKey)
+                            .putString("OPENAI_API_KEY", openAiKey)
+                            .putString("DEFAULT_AI_PROVIDER", defaultAiProvider)
+                            .apply()
+                        onDismiss()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {

@@ -62,6 +62,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import com.example.verb.terminal.AnsiTextParser
 import com.example.verb.terminal.MobileTerminalKeyboard
@@ -94,6 +95,7 @@ fun TerminalScreen(
     onSubmitIntent: (VerbIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showNaturalLanguageSheet by remember { mutableStateOf(false) }
     var showDiagnosticsSheet by remember { mutableStateOf(false) }
@@ -500,7 +502,7 @@ fun TerminalScreen(
                 var showContextMenu by remember { mutableStateOf(false) }
                 val clipboardManager = LocalClipboardManager.current
 
-                Box(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).pointerInput(Unit) {
+                Box(modifier = Modifier.fillMaxWidth().verticalScroll(scrollState).pointerInput(Unit) {
                     detectTapGestures(onLongPress = { showContextMenu = true })
                 }) {
                     SelectionContainer {
@@ -809,7 +811,7 @@ fun TerminalScreen(
         
         LaunchedEffect(terminalOutput) {
             aiResponse = "Analyzing terminal output..."
-            aiResponse = com.example.verb.terminal.TerminalAiHelper.analyzeTerminalOutput(terminalOutput)
+            aiResponse = com.example.verb.terminal.TerminalAiHelper.analyzeTerminalOutput(context, terminalOutput)
         }
         
         AlertDialog(

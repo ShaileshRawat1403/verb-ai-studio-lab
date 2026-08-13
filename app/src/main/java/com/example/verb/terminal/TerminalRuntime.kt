@@ -9,11 +9,10 @@ import java.io.File
  * Automatically selects [TermuxTerminalRuntimeAdapter] in native Android environments or [FakeTerminalRuntimeAdapter] in test/JVM environments.
  */
 class TerminalRuntime(
-    private val workingDir: File,
-    useFakeForTesting: Boolean = false
+    private val workingDir: File
 ) : TerminalRuntimeAdapter {
 
-    private val delegate: TerminalRuntimeAdapter = if (useFakeForTesting) com.example.verb.terminal.FakeTerminalRuntimeAdapter(workingDir) else com.example.verb.terminal.TermuxTerminalRuntimeAdapter(workingDir)
+    private val delegate: TerminalRuntimeAdapter = com.example.verb.terminal.TermuxTerminalRuntimeAdapter(workingDir)
 
     val delegateAdapter: TerminalRuntimeAdapter get() = delegate
     val unwrapTermuxAdapter: TermuxTerminalRuntimeAdapter? get() = delegate as? TermuxTerminalRuntimeAdapter
