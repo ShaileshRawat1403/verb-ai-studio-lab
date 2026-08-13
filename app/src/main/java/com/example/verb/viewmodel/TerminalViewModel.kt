@@ -99,18 +99,34 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
             }
         }
         
-        val curlFile = java.io.File(binDir, "curl")
-        if (!curlFile.exists()) {
-            try {
-                val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
-                if (arch != null) {
-                    val inputStream = app.assets.open("$arch/curl")
-                    val outputStream = java.io.FileOutputStream(curlFile)
-                    inputStream.copyTo(outputStream)
-                    inputStream.close()
-                    outputStream.close()
-                    curlFile.setExecutable(true)
+        val tools = listOf("curl", "jq", "busybox")
+        val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull { it == "arm64-v8a" || it == "x86_64" }
+        
+        tools.forEach { tool ->
+            val toolFile = java.io.File(binDir, tool)
+            if (!toolFile.exists()) {
+                try {
+                    if (arch != null) {
+                        val inputStream = app.assets.open("$arch/$tool")
+                        val outputStream = java.io.FileOutputStream(toolFile)
+                        inputStream.copyTo(outputStream)
+                        inputStream.close()
+                        outputStream.close()
+                        toolFile.setExecutable(true)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
+            }
+        }
+        
+        // Let busybox install its symlinks if they don't exist yet
+        val busyboxSymlinkInstalled = java.io.File(binDir, "vi").exists()
+        if (!busyboxSymlinkInstalled && java.io.File(binDir, "busybox").exists()) {
+            try {
+                val pb = ProcessBuilder(java.io.File(binDir, "busybox").absolutePath, "--install", "-s", ".")
+                pb.directory(binDir)
+                pb.start().waitFor()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
