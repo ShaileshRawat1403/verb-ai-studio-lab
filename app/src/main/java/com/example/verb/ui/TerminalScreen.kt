@@ -444,13 +444,13 @@ fun TerminalScreen(
         ) {
             val termuxAdapter = (terminalRuntime as? TerminalRuntime)?.unwrapTermuxAdapter
                 ?: (terminalRuntime as? TermuxTerminalRuntimeAdapter)
-            val hasNativePty = termuxAdapter != null && sessionState == com.example.verb.terminal.TerminalSessionState.RUNNING
+            val hasNativePty = false // FORCED TO FALSE FOR HYBRID APPROACH
 
             if (hasNativePty) {
                 AndroidView(
                     factory = { ctx ->
-                        termuxAdapter.terminalView ?: TerminalView(ctx, null).also {
-                            termuxAdapter.bindTerminalView(it)
+                        termuxAdapter?.terminalView ?: TerminalView(ctx, null).also {
+                            termuxAdapter?.bindTerminalView(it)
                         }
                     },
                     modifier = Modifier
@@ -459,9 +459,9 @@ fun TerminalScreen(
                 )
             } else {
                 val rawText = if (terminalOutput.isNotBlank()) {
-                    terminalOutput
+                    terminalOutput + commandInput
                 } else {
-                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ "
+                    "Verb Local PTY Active [Universal Command Engine v2.0 Ready]\nType 'help', 'curl -fsSL ... | sh', 'claude', 'codex', or tap a shortcut below.\n$ " + commandInput
                 }
                 
                 var cursorVisible by remember { mutableStateOf(true) }
@@ -475,9 +475,13 @@ fun TerminalScreen(
                 val cursorChar = if (cursorVisible) "█" else " "
 
                 val annotatedOutput = remember<androidx.compose.ui.text.AnnotatedString>(rawText, cursorVisible, isDark) {
-                    val defaultTextColor: Color = if (isDark) Color(0xFF4ADE80) else Color(0xFF38BDF8)
-                    val parsed = AnsiTextParser.parse(rawText + cursorChar, defaultColor = defaultTextColor)
-                    AnsiTextParser.applyBasicSyntaxHighlighting(parsed, isDark)
+                    try {
+                        val defaultTextColor: Color = if (isDark) Color(0xFF4ADE80) else Color(0xFF38BDF8)
+                        val parsed = AnsiTextParser.parse(rawText + cursorChar, defaultColor = defaultTextColor)
+                        AnsiTextParser.applyBasicSyntaxHighlighting(parsed, isDark)
+                    } catch (e: Exception) {
+                        androidx.compose.ui.text.AnnotatedString("CRASH: ${e.message}")
+                    }
                 }
 
                 var showContextMenu by remember { mutableStateOf(false) }
@@ -656,7 +660,11 @@ fun TerminalScreen(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp
                 ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Send,
+                    autoCorrect = false,
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii
+                ),
                 keyboardActions = KeyboardActions(
                     onSend = {
                         if (commandInput.isNotBlank()) {
